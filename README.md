@@ -1,6 +1,6 @@
 # Chatlas
 
-Senior Capstone Project — Purdue University (CS 40800)
+Senior Capstone Project — Purdue University (CS 40700)
 
 ## Tech Stack
 - **Frontend & App Framework:** [Next.js](https://nextjs.org/) (React)
