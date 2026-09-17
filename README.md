@@ -32,5 +32,17 @@ Open `.env.local` and fill in your Supabase project credentials (**Project Setti
 - `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase Project URL
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your **`anon` (public)** key
 
+### 4. Install Dependencies
+```bash
+npm install
+```
+
+### 5. Start Development Server
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser to view the application.
+
 > [!IMPORTANT]
 > Always use the **`anon` (public)** key for client-side development. Never commit `.env` / `.env.local` or use the `service_role` secret key.
+
