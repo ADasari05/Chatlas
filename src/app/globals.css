@@ -1,1 +1,252 @@
 @import "tailwindcss";
+
+.page {
+    display: flex;
+    width: 100%;
+    height: 100vh;
+}
+
+.sidebar {
+    height: 100vh;
+    width: 175px;
+    background-color: #071b2e;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-top: 2vh;
+    padding-left: 10px;
+    padding-right: 10px;
+    color: white;
+}
+
+.sidebar-header h2 {
+    margin: 0;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    color: white;
+    font-size: 25px;
+    font-weight: 600;
+    padding: 0px 0px 20px 8px;
+}
+
+.sidebar-buttons {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    flex-grow: 0.8;
+}
+
+.sidebar-buttons li {
+    margin-bottom: 6px;
+}
+
+.sidebar-buttons button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    background: transparent;
+    color: #dce7f2;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sidebar-buttons button:hover {
+    background-color: #123552;
+}
+
+.sidebar-buttons button.clicked {
+    background-color: #0878ed;
+    color: white;
+}
+
+.info-button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    background: transparent;
+    color: #dce7f2;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.info-button:hover {
+    background-color: #296fa9;
+}
+
+.main-content {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+}
+
+.search-bar {
+    margin-top: 10px;
+    position: absolute;
+    padding: 0 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 10;
+}
+
+.search-bar input {
+    width: 300px;
+    padding: 10px;
+    box-sizing: border-box;
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+.map {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.info-panel {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: white;
+    z-index: 20;
+    border-radius: 15px 15px 0 0;
+    box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+}
+
+.drag-handle {
+    height: 25px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: ns-resize;
+}
+
+.drag-bar {
+    width: 50px;
+    height: 5px;
+    background-color: #aaaaaa;
+    border-radius: 5px;
+}
+
+.info-content {
+    overflow-y: auto;
+    padding-left: 15px;
+}
+
+.close-button {
+    position: absolute;
+    top: 8px;
+    right: 15px;
+    border: none;
+    background: none;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.account-button {
+    margin-top: 10px;
+    position: absolute;
+    right: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 10;
+
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #fdfdfd;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    overflow: hidden;
+}
+
+.account-dropdown {
+    position: absolute;
+    top: 50px;
+    right: 10px;
+    background-color: #fdfdfd;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+}
+
+.account-dropdown button {
+    background: none;
+    border: none;
+    padding: 10px 20px;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+}
+
+.account-dropdown button:hover {
+    background-color: #f0f0f0;
+}
+
+.sign-in-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 350px;
+    padding: 25px;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+}
+
+.sign-in-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+}
+
+.sign-in-popup input {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+.close-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+.sign-in-button {
+    position: relative;
+    width: 20%;
+    padding: 5px;
+}
