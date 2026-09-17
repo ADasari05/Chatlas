@@ -3,7 +3,7 @@
 Senior Capstone Project — Purdue University (CS 40800)
 
 ## Tech Stack
-- **Frontend:** React.js
+- **Frontend & App Framework:** [Next.js](https://nextjs.org/) (React)
 - **Backend & Auth:** [Supabase](https://supabase.com)
 - **Database:** PostgreSQL (managed via Supabase)
 
@@ -22,15 +22,15 @@ cd Chatlas
 ```
 
 ### 3. Environment Configuration
-Create a local `.env` file from the template:
+Create a local environment file from the template:
 
 ```bash
-cp .env.example .env
+cp .env.example .env.local
 ```
 
-Open `.env` and fill in your Supabase project credentials (**Project Settings → API**):
-- `VITE_SUPABASE_URL`: Your Supabase Project URL
-- `VITE_SUPABASE_ANON_KEY`: Your **`anon` (public)** key
+Open `.env.local` and fill in your Supabase project credentials (**Project Settings → API**):
+- `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase Project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your **`anon` (public)** key
 
 > [!IMPORTANT]
-> Always use the **`anon` (public)** key for client-side development. Never commit `.env` or use the `service_role` secret key.
+> Always use the **`anon` (public)** key for client-side development. Never commit `.env` / `.env.local` or use the `service_role` secret key.
