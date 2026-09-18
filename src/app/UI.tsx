@@ -48,6 +48,7 @@ const UI: React.FC = () => {
                 <button className="info-button" onClick={OpenPanel}>
                     {'Open \n Information'}
                 </button>
+                <Account />
             </div>
             <div className="main-content">
                 <div className="search-bar">
@@ -58,7 +59,6 @@ const UI: React.FC = () => {
                         placeholder="Enter a Country or City"
                     />
                 </div>
-                <Account />
                 <Map />
                 <InfoPanel />
             </div>
