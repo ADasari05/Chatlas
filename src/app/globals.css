@@ -159,25 +159,26 @@
 }
 
 .account-button {
-    margin-top: 10px;
     position: absolute;
     right: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    z-index: 10;
-
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background-color: #fdfdfd;
+    width: 100px;
+    height: 60px;
+    background-color: transparent;
     border: none;
+    padding: 0;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-end;
     cursor: pointer;
+    z-index: 10;
+}
+
+.account-button svg {
+    width: 40px;
+    height: 40px;
     padding: 0;
-    overflow: hidden;
+    background-color: #fdfdfd;
+    border-radius: 50%;
 }
 
 .account-dropdown {
@@ -240,13 +241,41 @@
 }
 
 .close-button {
+    cursor: pointer;
     position: absolute;
+    background-color: #f1f0f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    height: 25px;
+    width: 50px;
     top: 10px;
     right: 10px;
 }
 
 .sign-in-button {
+    cursor: pointer;
     position: relative;
-    width: 20%;
-    padding: 5px;
+    background-color: #f1f0f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    height: 25px;
+    width: 60px;
+}
+
+.success-popup {
+    position: fixed;
+    top: 10%;
+    left: 50%;
+    text-align: center;
+    transform: translate(-50%, -50%);
+    width: 350px;
+    padding: 25px;
+    background-color: rgb(209, 209, 209);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+}
+
+.error-message {
+    color: rgb(180, 35, 35);
+    font-size: 14px;
+    margin-top: 5px;
 }
