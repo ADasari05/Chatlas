@@ -21,8 +21,11 @@ function Map(): React.JSX.Element {
         });
 
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }));
+
+        // Remove right click feature
         map.dragRotate.disable();
 
+        // Remove street view
         map.on('style.load', () => {
             for (const layer of map.getStyle()?.layers ?? []) {
                 if (layer['source-layer'] === 'road' || layer['source-layer'] === 'road_label') {
