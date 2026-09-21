@@ -14,12 +14,70 @@ const MAP_STYLES: MapStyleOption[] = [
     { id: 'navigation-dark', label: 'Navigation Dark', url: 'mapbox://styles/mapbox/navigation-night-v1' },
 ];
 
+const COUNTRY_DATA = 'country-data';
+const COUNTRY_DATA_LAYER = 'country_boundaries';
+const COUNTRY_TINT = 'country-tint';
+const COUNTRY_OUTLINE = 'country-outline';
+const CITY_DATA = 'city-data';
+const CITY_DOT = 'city-dot';
+const HIGHLIGHT_COLOR = '#f29406';
+const NO_CITY = { type: 'FeatureCollection', features: [] };
+
 function setStreetLayersVisible(map: mapboxgl.Map, visible: boolean): void {
     for (const layer of map.getStyle()?.layers ?? []) {
         if (layer['source-layer'] === 'road' || layer['source-layer'] === 'road_label') {
             map.setLayoutProperty(layer.id, 'visibility', visible ? 'visible' : 'none');
         }
     }
+}
+
+function addHoverEffect(map: mapboxgl.Map): void {
+    // Define layers and determine where to place hover effects
+    const layers = map.getStyle()?.layers ?? [];
+    const textLayerId = layers.find((l) => l.type === 'symbol')?.id;
+    const cityLayerId = layers.find((l) => l['source-layer'] === 'place_label')?.id;
+
+    // Set up country boundaries
+    if (!map.getSource(COUNTRY_DATA)) {
+        map.addSource(COUNTRY_DATA, {
+        type: 'vector',
+        url: 'mapbox://mapbox.country-boundaries-v1',
+        promoteId: { [COUNTRY_DATA_LAYER]: 'iso_3166_1' },
+    });
+    }
+
+    // Tint country on hover
+    map.addLayer(
+        {
+            id: COUNTRY_TINT,
+            type: 'fill',
+            source: COUNTRY_DATA,
+            'source-layer': COUNTRY_DATA_LAYER,
+            filter: ['any', ['==', 'all', ['get', 'worldview']], ['in', 'US', ['get', 'worldview']]],
+            paint: {
+                'fill-color': HIGHLIGHT_COLOR,
+                'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.2, 0],
+            },
+        },
+        textLayerId
+    );
+
+
+    // Outline country on hover
+    map.addLayer(
+        {
+            id: COUNTRY_OUTLINE,
+            type: 'line',
+            source: COUNTRY_DATA,
+            'source-layer': COUNTRY_DATA_LAYER,
+            filter: ['any', ['==', 'all', ['get', 'worldview']], ['in', 'US', ['get', 'worldview']]],
+            paint: {
+                'line-color': HIGHLIGHT_COLOR,
+                'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 3, 0],
+            },
+        },
+        textLayerId
+    );
 }
 
 function Map(): React.JSX.Element {
@@ -47,10 +105,68 @@ function Map(): React.JSX.Element {
         // Remove right click feature
         map.dragRotate.disable();
 
+        // Show name popup of city/country on mouse hover
+        const nameBox = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 14 });
+        const showName = (place: mapboxgl.LngLat, name: string): void => {
+            nameBox.setLngLat(place).setText(name);
+            if (!nameBox.isOpen()) {
+                nameBox.addTo(map);
+                const element = nameBox.getElement();
+                if (element) {
+                    element.style.pointerEvents = 'none';
+                }
+            }
+        };
+
+        let hoveredCountry: string | null = null;
+ 
+        const unhighlightCountry = (): void => {
+            if (hoveredCountry === null) return;
+            map.setFeatureState(
+                { source: COUNTRY_DATA, sourceLayer: COUNTRY_DATA_LAYER, id: hoveredCountry },
+                { hover: false }
+            );
+            hoveredCountry = null;
+        };
+
+        // Track mouse movement for highlighting and showing names
+        map.on('mousemove', (e) => {
+            if (!map.getLayer(COUNTRY_TINT)) {
+                return;
+            }
+ 
+            // Handle country highlight
+            const country = (
+                map.queryRenderedFeatures(e.point, { layers: [COUNTRY_TINT] }) as unknown as GeoJSON.Feature[]
+            )[0];
+            const countryCode: string | undefined = country?.properties?.iso_3166_1;
+            if (!country || !countryCode) {
+                unhighlightCountry();
+                nameBox.remove();
+                return;
+            }
+ 
+            if (countryCode !== hoveredCountry) {
+                unhighlightCountry();
+                map.setFeatureState(
+                    { source: COUNTRY_DATA, sourceLayer: COUNTRY_DATA_LAYER, id: countryCode },
+                    { hover: true }
+                );
+                hoveredCountry = countryCode;
+            }
+            showName(e.lngLat, country.properties?.name_en ?? countryCode);
+        });
+
         // Style switches reset layer visibility, so reapply on every load
-        map.on('style.load', () => setStreetLayersVisible(map, showStreetsRef.current));
+        map.on('style.load', () => {
+            setStreetLayersVisible(map, showStreetsRef.current);
+            addHoverEffect(map);
+            hoveredCountry = null;
+            nameBox.remove();
+        });
 
         return () => {
+            nameBox.remove();
             map.remove();
             mapRef.current = null;
         };
