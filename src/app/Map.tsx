@@ -78,6 +78,37 @@ function addHoverEffect(map: mapboxgl.Map): void {
         },
         textLayerId
     );
+
+    // Define city data and layer
+    map.addSource(CITY_DATA, { type: 'geojson', data: NO_CITY });
+    map.addLayer(
+        {
+            id: CITY_DOT,
+            type: 'circle',
+            source: CITY_DATA,
+            paint: {
+                'circle-radius': 9,
+                'circle-color': HIGHLIGHT_COLOR,
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 2,
+            },
+        },
+        cityLayerId
+    );
+}
+
+function findCityNearMouse(map: mapboxgl.Map, mouse: mapboxgl.Point) {
+    const cityTextLayers = (map.getStyle()?.layers ?? [])
+        .filter((l) => l.type === 'symbol' && l['source-layer'] === 'place_label')
+        .map((l) => l.id);
+    if (cityTextLayers.length === 0) return undefined;
+
+    const cities = map.queryRenderedFeatures(mouse, {
+        layers: cityTextLayers,
+        filter: ['==', ['get', 'class'], 'settlement'],
+    }) as unknown as GeoJSON.Feature[];
+
+    return cities[0];
 }
 
 function Map(): React.JSX.Element {
@@ -128,6 +159,10 @@ function Map(): React.JSX.Element {
             );
             hoveredCountry = null;
         };
+ 
+        const unhighlightCity = (): void => {
+            (map.getSource(CITY_DATA) as mapboxgl.GeoJSONSource | undefined)?.setData(NO_CITY);
+        };
 
         // Track mouse movement for highlighting and showing names
         map.on('mousemove', (e) => {
@@ -135,7 +170,22 @@ function Map(): React.JSX.Element {
                 return;
             }
  
-            // Handle country highlight
+            // Handle city case
+            const city = findCityNearMouse(map, e.point);
+            const cityName = city?.properties?.name;
+            if (city && cityName) {
+                unhighlightCountry();
+                (map.getSource(CITY_DATA) as mapboxgl.GeoJSONSource).setData({
+                    type: 'Feature',
+                    properties: {},
+                    geometry: city.geometry,
+                });
+                showName(e.lngLat, cityName);
+                return;
+            }
+            unhighlightCity();
+ 
+            // Handle country case
             const country = (
                 map.queryRenderedFeatures(e.point, { layers: [COUNTRY_TINT] }) as unknown as GeoJSON.Feature[]
             )[0];
