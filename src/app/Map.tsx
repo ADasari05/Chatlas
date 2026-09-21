@@ -23,6 +23,10 @@ const CITY_DOT = 'city-dot';
 const HIGHLIGHT_COLOR = '#f29406';
 const NO_CITY = { type: 'FeatureCollection', features: [] };
 
+const CLICKED_CITY_DATA = 'clicked-city-data';
+const CLICKED_CITY_DOT = 'clicked-city-dot';
+const CLICK_COLOR = '#b21c1c';
+
 function setStreetLayersVisible(map: mapboxgl.Map, visible: boolean): void {
     for (const layer of map.getStyle()?.layers ?? []) {
         if (layer['source-layer'] === 'road' || layer['source-layer'] === 'road_label') {
@@ -55,8 +59,13 @@ function addHoverEffect(map: mapboxgl.Map): void {
             'source-layer': COUNTRY_DATA_LAYER,
             filter: ['any', ['==', 'all', ['get', 'worldview']], ['in', 'US', ['get', 'worldview']]],
             paint: {
-                'fill-color': HIGHLIGHT_COLOR,
-                'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.2, 0],
+                'fill-color': ['case', ['boolean', ['feature-state', 'selected'], false], CLICK_COLOR, HIGHLIGHT_COLOR],
+                'fill-opacity': [
+                    'case',
+                    ['boolean', ['feature-state', 'selected'], false], 0.3,
+                    ['boolean', ['feature-state', 'hover'], false], 0.2,
+                    0,
+                ],
             },
         },
         textLayerId
@@ -72,8 +81,13 @@ function addHoverEffect(map: mapboxgl.Map): void {
             'source-layer': COUNTRY_DATA_LAYER,
             filter: ['any', ['==', 'all', ['get', 'worldview']], ['in', 'US', ['get', 'worldview']]],
             paint: {
-                'line-color': HIGHLIGHT_COLOR,
-                'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 3, 0],
+                'line-color': ['case', ['boolean', ['feature-state', 'selected'], false], CLICK_COLOR, HIGHLIGHT_COLOR],
+                'line-width': [
+                    'case',
+                    ['boolean', ['feature-state', 'selected'], false], 3,
+                    ['boolean', ['feature-state', 'hover'], false], 3,
+                    0,
+                ],
             },
         },
         textLayerId
@@ -89,6 +103,23 @@ function addHoverEffect(map: mapboxgl.Map): void {
             paint: {
                 'circle-radius': 9,
                 'circle-color': HIGHLIGHT_COLOR,
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 2,
+            },
+        },
+        cityLayerId
+    );
+
+    // Define city data and layer for clicked case
+    map.addSource(CLICKED_CITY_DATA, { type: 'geojson', data: NO_CITY });
+    map.addLayer(
+        {
+            id: CLICKED_CITY_DOT,
+            type: 'circle',
+            source: CLICKED_CITY_DATA,
+            paint: {
+                'circle-radius': 9,
+                'circle-color': CLICK_COLOR,
                 'circle-stroke-color': '#ffffff',
                 'circle-stroke-width': 2,
             },
@@ -150,6 +181,7 @@ function Map(): React.JSX.Element {
         };
 
         let hoveredCountry: string | null = null;
+        let selectedCountry: string | null = null;
  
         const unhighlightCountry = (): void => {
             if (hoveredCountry === null) return;
@@ -207,11 +239,76 @@ function Map(): React.JSX.Element {
             showName(e.lngLat, country.properties?.name_en ?? countryCode);
         });
 
+        // Remove highlighting for clicking
+        const deselect = (): void => {
+            if (selectedCountry !== null) {
+                map.setFeatureState(
+                    { source: COUNTRY_DATA, sourceLayer: COUNTRY_DATA_LAYER, id: selectedCountry },
+                    { selected: false }
+                );
+                selectedCountry = null;
+            }
+            (map.getSource(CLICKED_CITY_DATA) as mapboxgl.GeoJSONSource | undefined)?.setData(NO_CITY);
+        };
+
+        // Show click highlight
+        map.on('click', (e) => {
+            if (!map.getLayer(COUNTRY_TINT)) {
+                return;
+            }
+
+            // City case
+            const city = findCityNearMouse(map, e.point);
+            if (city) {
+                deselect();
+                const existingCity = map.querySourceFeatures(CLICKED_CITY_DATA)[0] as GeoJSON.Feature | undefined;
+                if (existingCity && existingCity.properties?.name === city.properties?.name) {
+                    console.log(city);
+                    console.log(existingCity);
+                    return;
+                }
+                (map.getSource(CLICKED_CITY_DATA) as mapboxgl.GeoJSONSource).setData({
+                    type: 'Feature',
+                    properties: city.properties || {},
+                    geometry: city.geometry,
+                });
+                return;
+            }
+
+            // Country case
+            const country = (
+                map.queryRenderedFeatures(e.point, { layers: [COUNTRY_TINT] }) as unknown as GeoJSON.Feature[]
+            )[0];
+            const countryCode: string | undefined = country?.properties?.iso_3166_1;
+
+            if (!countryCode) {
+                return;
+            }
+
+            if(selectedCountry == countryCode) {
+                map.setFeatureState(
+                    { source: COUNTRY_DATA, sourceLayer: COUNTRY_DATA_LAYER, id: countryCode },
+                    { selected: false }
+                );
+                selectedCountry = null;
+                return;
+            }
+
+            deselect();
+            map.setFeatureState(
+                { source: COUNTRY_DATA, sourceLayer: COUNTRY_DATA_LAYER, id: countryCode },
+                { selected: true }
+            );
+            
+            selectedCountry = countryCode;
+        });
+
         // Style switches reset layer visibility, so reapply on every load
         map.on('style.load', () => {
             setStreetLayersVisible(map, showStreetsRef.current);
             addHoverEffect(map);
             hoveredCountry = null;
+            selectedCountry = null;
             nameBox.remove();
         });
 
