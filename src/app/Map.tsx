@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import MapStyleMenu, { MapStyleOption } from './MapStyleMenu';
+import { setLocation } from './InfoPanel';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN as string;
 mapboxgl.prewarm();
@@ -251,6 +252,14 @@ function Map(): React.JSX.Element {
             (map.getSource(CLICKED_CITY_DATA) as mapboxgl.GeoJSONSource | undefined)?.setData(NO_CITY);
         };
 
+        const moveMapOnClick = (location: mapboxgl.LngLat): void => {
+            map.easeTo({
+                center: location,
+                padding: { top: 0, left: 0, right: 0, bottom: window.innerHeight * 0.6 },
+                duration: 1200,
+            });
+        }
+
         // Show click highlight
         map.on('click', (e) => {
             if (!map.getLayer(COUNTRY_TINT)) {
@@ -260,11 +269,13 @@ function Map(): React.JSX.Element {
             // City case
             const city = findCityNearMouse(map, e.point);
             if (city) {
+                const cityPoint = map.project((city.geometry as GeoJSON.Point).coordinates as [number, number]);
+                const cityCountry = (
+                    map.queryRenderedFeatures(cityPoint, { layers: [COUNTRY_TINT] }) as unknown as GeoJSON.Feature[]
+                )[0];
                 deselect();
                 const existingCity = map.querySourceFeatures(CLICKED_CITY_DATA)[0] as GeoJSON.Feature | undefined;
                 if (existingCity && existingCity.properties?.name === city.properties?.name) {
-                    console.log(city);
-                    console.log(existingCity);
                     return;
                 }
                 (map.getSource(CLICKED_CITY_DATA) as mapboxgl.GeoJSONSource).setData({
@@ -272,6 +283,11 @@ function Map(): React.JSX.Element {
                     properties: city.properties || {},
                     geometry: city.geometry,
                 });
+                setLocation({
+                    country: cityCountry?.properties?.name_en ?? '',
+                    city: city.properties?.name ?? '',
+                });
+                moveMapOnClick((city.geometry as GeoJSON.Point).coordinates as [number, number]);
                 return;
             }
 
@@ -301,6 +317,10 @@ function Map(): React.JSX.Element {
             );
             
             selectedCountry = countryCode;
+            setLocation({
+                country: country.properties?.name_en ?? countryCode,
+            });
+            moveMapOnClick(e.lngLat);
         });
 
         // Style switches reset layer visibility, so reapply on every load
