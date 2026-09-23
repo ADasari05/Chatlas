@@ -5,6 +5,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import MapStyleMenu, { MapStyleOption } from './MapStyleMenu';
 import { setLocation } from './InfoPanel';
+import { loginStatus } from './Account';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN as string;
 mapboxgl.prewarm();
@@ -28,10 +29,23 @@ const CLICKED_CITY_DATA = 'clicked-city-data';
 const CLICKED_CITY_DOT = 'clicked-city-dot';
 const CLICK_COLOR = '#b21c1c';
 
+const waypoints: { lat: number; lng: number }[] = [];
+const waypointMarkers: mapboxgl.Marker[] = [];
+
 function setStreetLayersVisible(map: mapboxgl.Map, visible: boolean): void {
     for (const layer of map.getStyle()?.layers ?? []) {
         if (layer['source-layer'] === 'road' || layer['source-layer'] === 'road_label') {
             map.setLayoutProperty(layer.id, 'visibility', visible ? 'visible' : 'none');
+        }
+    }
+}
+
+function setWaypointsVisible(map: mapboxgl.Map, visible: boolean): void {
+    for (const marker of waypointMarkers) {
+        if (visible) {
+            marker.addTo(map);
+        } else {
+            marker.remove();
         }
     }
 }
@@ -150,6 +164,14 @@ function Map(): React.JSX.Element {
     const [showStreets, setShowStreets] = useState(false);
     const showStreetsRef = useRef(showStreets);
     showStreetsRef.current = showStreets;
+    const [showWaypoints, setShowWaypoints] = useState(true);
+    const showWaypointsRef = useRef(showWaypoints);
+    showWaypointsRef.current = showWaypoints;
+
+    const [isWaypointConfirmationPopupOpen, setIsWaypointConfirmationPopupOpen] = useState(false);
+    const [isWaypointInteractionPopupOpen, setIsWaypointInteractionPopupOpen] = useState(false);
+
+    const [selectedWaypointIndex, setSelectedWaypointIndex] = useState<number | null>(null);
 
     useEffect(() => {
         if (!containerRef.current) return;
@@ -167,6 +189,7 @@ function Map(): React.JSX.Element {
 
         // Remove right click feature
         map.dragRotate.disable();
+        map.doubleClickZoom.disable();
 
         // Show name popup of city/country on mouse hover
         const nameBox = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, offset: 14 });
@@ -260,72 +283,108 @@ function Map(): React.JSX.Element {
             });
         }
 
+        let clickTimer: ReturnType<typeof setTimeout> | null = null;
+
         // Show click highlight
         map.on('click', (e) => {
-            if (!map.getLayer(COUNTRY_TINT)) {
+            if (e.originalEvent.detail > 1) {
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                }
                 return;
             }
-
-            // City case
-            const city = findCityNearMouse(map, e.point);
-            if (city) {
-                const cityPoint = map.project((city.geometry as GeoJSON.Point).coordinates as [number, number]);
-                const cityCountry = (
-                    map.queryRenderedFeatures(cityPoint, { layers: [COUNTRY_TINT] }) as unknown as GeoJSON.Feature[]
-                )[0];
-                deselect();
-                const existingCity = map.querySourceFeatures(CLICKED_CITY_DATA)[0] as GeoJSON.Feature | undefined;
-                if (existingCity && existingCity.properties?.name === city.properties?.name) {
+            clickTimer = setTimeout(() => {
+                clickTimer = null;
+                if (!map.getLayer(COUNTRY_TINT)) {
                     return;
                 }
-                (map.getSource(CLICKED_CITY_DATA) as mapboxgl.GeoJSONSource).setData({
-                    type: 'Feature',
-                    properties: city.properties || {},
-                    geometry: city.geometry,
-                });
-                setLocation({
-                    country: cityCountry?.properties?.name_en ?? '',
-                    city: city.properties?.name ?? '',
-                });
-                moveMapOnClick((city.geometry as GeoJSON.Point).coordinates as [number, number]);
-                return;
-            }
 
-            // Country case
-            const country = (
-                map.queryRenderedFeatures(e.point, { layers: [COUNTRY_TINT] }) as unknown as GeoJSON.Feature[]
-            )[0];
-            const countryCode: string | undefined = country?.properties?.iso_3166_1;
+                // City case
+                const city = findCityNearMouse(map, e.point);
+                if (city) {
+                    const cityPoint = map.project((city.geometry as GeoJSON.Point).coordinates as [number, number]);
+                    const cityCountry = (
+                        map.queryRenderedFeatures(cityPoint, { layers: [COUNTRY_TINT] }) as unknown as GeoJSON.Feature[]
+                    )[0];
+                    deselect();
+                    const existingCity = map.querySourceFeatures(CLICKED_CITY_DATA)[0] as GeoJSON.Feature | undefined;
+                    if (existingCity && existingCity.properties?.name === city.properties?.name) {
+                        return;
+                    }
+                    (map.getSource(CLICKED_CITY_DATA) as mapboxgl.GeoJSONSource).setData({
+                        type: 'Feature',
+                        properties: city.properties || {},
+                        geometry: city.geometry,
+                    });
+                    setLocation({
+                        country: cityCountry?.properties?.name_en ?? '',
+                        city: city.properties?.name ?? '',
+                    });
+                    moveMapOnClick((city.geometry as GeoJSON.Point).coordinates as [number, number]);
+                    return;
+                }
 
-            if (!countryCode) {
-                return;
-            }
+                // Country case
+                const country = (
+                    map.queryRenderedFeatures(e.point, { layers: [COUNTRY_TINT] }) as unknown as GeoJSON.Feature[]
+                )[0];
+                const countryCode: string | undefined = country?.properties?.iso_3166_1;
 
-            if(selectedCountry == countryCode) {
+                if (!countryCode) {
+                    return;
+                }
+
+                if(selectedCountry == countryCode) {
+                    map.setFeatureState(
+                        { source: COUNTRY_DATA, sourceLayer: COUNTRY_DATA_LAYER, id: countryCode },
+                        { selected: false }
+                    );
+                    selectedCountry = null;
+                    return;
+                }
+
+                deselect();
                 map.setFeatureState(
                     { source: COUNTRY_DATA, sourceLayer: COUNTRY_DATA_LAYER, id: countryCode },
-                    { selected: false }
+                    { selected: true }
                 );
-                selectedCountry = null;
+                
+                selectedCountry = countryCode;
+                setLocation({
+                    country: country.properties?.name_en ?? countryCode,
+                });
+                moveMapOnClick(e.lngLat);
+            }, 250);
+        });
+
+        map.on('dblclick', (e) => {
+            // TODO: Add server validation for login and waypoint limit
+            if(loginStatus == false || waypoints.length >= 5 || !showWaypointsRef.current) {
+                console.log("User not logged in, cannot add waypoint");
                 return;
             }
+            setIsWaypointConfirmationPopupOpen(true);
+            const marker = new mapboxgl.Marker().setLngLat(e.lngLat);
 
-            deselect();
-            map.setFeatureState(
-                { source: COUNTRY_DATA, sourceLayer: COUNTRY_DATA_LAYER, id: countryCode },
-                { selected: true }
-            );
-            
-            selectedCountry = countryCode;
-            setLocation({
-                country: country.properties?.name_en ?? countryCode,
+            if(showWaypointsRef.current) {
+                marker.addTo(map);
+            }
+
+            marker.getElement().addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                setIsWaypointInteractionPopupOpen(true);
+                setSelectedWaypointIndex(waypointMarkers.indexOf(marker));
+                console.log('marker clicked');
             });
-            moveMapOnClick(e.lngLat);
+
+            waypoints.push({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+            waypointMarkers.push(marker);
         });
 
         // Style switches reset layer visibility, so reapply on every load
         map.on('style.load', () => {
             setStreetLayersVisible(map, showStreetsRef.current);
+            setWaypointsVisible(map, showWaypointsRef.current);
             addHoverEffect(map);
             hoveredCountry = null;
             selectedCountry = null;
@@ -350,6 +409,33 @@ function Map(): React.JSX.Element {
         if (mapRef.current) setStreetLayersVisible(mapRef.current, next);
     };
 
+    const handleWaypointsToggle = (): void => {
+        if (!loginStatus) {
+            return;
+        }
+        const next = !showWaypoints;
+        setShowWaypoints(next);
+        if (mapRef.current) {
+            setWaypointsVisible(mapRef.current, next);
+        }
+    };
+
+    const removeLastWaypoint = (): void => {
+        const lastWaypoint = waypointMarkers.pop();
+        waypoints.pop();
+        lastWaypoint?.remove();
+    }
+
+    const deleteSelectedWaypoint = (): void => {
+        if (selectedWaypointIndex === null) return;
+        const index = selectedWaypointIndex;
+        const waypoint = waypointMarkers[index];
+        waypointMarkers.splice(index, 1);
+        waypoints.splice(index, 1);
+        waypoint.remove();
+        setSelectedWaypointIndex(null);
+    };
+
     return (
         <div className="map">
             <link rel="preconnect" href="https://api.mapbox.com" />
@@ -359,9 +445,59 @@ function Map(): React.JSX.Element {
                 styles={MAP_STYLES}
                 activeStyleId={activeStyleId}
                 showStreets={showStreets}
+                showWaypoints={showWaypoints}
                 onStyleChange={handleStyleChange}
                 onToggleStreets={handleStreetsToggle}
+                onToggleWaypoints={handleWaypointsToggle}
             />
+            {isWaypointConfirmationPopupOpen && (
+                <div className="waypoint-overlay">
+                <div className="waypoint-popup">
+                    <p>Do you wish to place a waypoint here?</p>
+                    <button
+                        className="waypoint-confirm-button"
+                        onClick={() => setIsWaypointConfirmationPopupOpen(false)}
+                    >
+                        Confirm
+                    </button>
+                    <button
+                        className="waypoint-cancel-button"
+                        onClick={() => {
+                            setIsWaypointConfirmationPopupOpen(false);
+                            removeLastWaypoint();
+                        }}
+                    >
+                        Cancel
+                    </button>
+                </div>
+                </div>
+                
+            )}
+            {isWaypointInteractionPopupOpen && (
+                <div className="waypoint-overlay">
+                <div className="waypoint-popup">
+                    <button
+                        className="waypoint-confirm-button"
+                        onClick={() => {
+                            setIsWaypointInteractionPopupOpen(false);
+                            deleteSelectedWaypoint();
+                        }}
+                    >
+                        Delete Waypoint
+                    </button>
+                    <button
+                        className="waypoint-cancel-button"
+                        onClick={() => {
+                            setIsWaypointInteractionPopupOpen(false);
+                            setSelectedWaypointIndex(null);
+                        }}
+                    >
+                        Cancel
+                    </button>
+                </div>
+                </div>
+                
+            )}
         </div>
     );
 }
