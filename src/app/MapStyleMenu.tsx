@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import { loginStatus } from './Account';
 
 export interface MapStyleOption {
     id: string;
@@ -14,9 +15,11 @@ interface MapStyleMenuProps {
     showStreets: boolean;
     onStyleChange: (style: MapStyleOption) => void;
     onToggleStreets: () => void;
+    showWaypoints: boolean;
+    onToggleWaypoints: () => void;
 }
 
-function MapStyleMenu({ styles, activeStyleId, showStreets, onStyleChange, onToggleStreets }: MapStyleMenuProps): React.JSX.Element {
+function MapStyleMenu({ styles, activeStyleId, showStreets, onStyleChange, onToggleStreets, showWaypoints, onToggleWaypoints }: MapStyleMenuProps): React.JSX.Element {
     const [menuOpen, setMenuOpen] = useState(false);
 
     const handleStyleClick = (style: MapStyleOption): void => {
@@ -43,6 +46,10 @@ function MapStyleMenu({ styles, activeStyleId, showStreets, onStyleChange, onTog
                     <label className="style-menu-toggle-row">
                         <input type="checkbox" checked={showStreets} onChange={onToggleStreets} />
                         Show streets
+                    </label>
+                    <label className="style-menu-toggle-row">
+                        <input type="checkbox" checked={showWaypoints} onChange={onToggleWaypoints} disabled={!loginStatus}/>
+                        Show waypoints
                     </label>
                 </div>
             )}

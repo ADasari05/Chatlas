@@ -5,6 +5,12 @@ interface AccountOption {
     label: string;
 }
 
+export let loginStatus = false;
+
+export function setLoginStatus(status: boolean): void {
+    loginStatus = status;
+}
+
 function Account(): React.JSX.Element {
     const accountLoginOptions: AccountOption[] = [
         { id: 'sign-in', label: 'Sign In' },
@@ -16,7 +22,6 @@ function Account(): React.JSX.Element {
         { id: 'sign-out', label: 'Sign Out' },
     ];
 
-    const [loginStatus, setLoginStatus] = React.useState<boolean>(false);
     const [isMenuOpen, setIsMenuOpen] = React.useState<boolean>(false);
     const [isLoginPopupOpen, setIsLoginPopupOpen] = React.useState<boolean>(false);
     const [isAccountCreationPopupOpen, setIsAccountCreationPopupOpen] = React.useState<boolean>(false);
