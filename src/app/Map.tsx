@@ -50,6 +50,18 @@ function setWaypointsVisible(map: mapboxgl.Map, visible: boolean): void {
     }
 }
 
+export function handleMapLogout(): void {
+    removeAllWaypoints();
+}
+
+function removeAllWaypoints(): void {
+    for (const marker of waypointMarkers) {
+        marker.remove();
+    }
+    waypointMarkers.length = 0;
+    waypoints.length = 0;
+}
+
 function addHoverEffect(map: mapboxgl.Map): void {
     // Define layers and determine where to place hover effects
     const layers = map.getStyle()?.layers ?? [];
@@ -359,8 +371,12 @@ function Map(): React.JSX.Element {
 
         map.on('dblclick', (e) => {
             // TODO: Add server validation for login and waypoint limit
-            if(loginStatus == false || waypoints.length >= 5 || !showWaypointsRef.current) {
+            if(loginStatus == false) {
                 console.log("User not logged in, cannot add waypoint");
+                return;
+            }
+            if(waypoints.length >= 5 || !showWaypointsRef.current) {
+                console.log("Waypoint limit reached or waypoints not visible, cannot add waypoint");
                 return;
             }
             setIsWaypointConfirmationPopupOpen(true);
