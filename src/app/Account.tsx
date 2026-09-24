@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { handleMapLogout } from './Map';
 
 interface AccountOption {
     id: string;
@@ -24,6 +25,8 @@ function Account(): React.JSX.Element {
 
     const [isMenuOpen, setIsMenuOpen] = React.useState<boolean>(false);
     const [isLoginPopupOpen, setIsLoginPopupOpen] = React.useState<boolean>(false);
+    const [isAccountSettingsPopupOpen, setIsAccountSettingsPopupOpen] = React.useState<boolean>(false);
+    const [isAccountDeletionPopupOpen, setIsAccountDeletionPopupOpen] = React.useState<boolean>(false);
     const [isAccountCreationPopupOpen, setIsAccountCreationPopupOpen] = React.useState<boolean>(false);
     const [showSignInSuccessPopup, setShowSignInSuccessPopup] = React.useState<boolean>(false);
     const [showSignOutSuccessPopup, setShowSignOutSuccessPopup] = React.useState<boolean>(false);
@@ -47,6 +50,10 @@ function Account(): React.JSX.Element {
         if (id === 'create-account') {
             setIsAccountCreationPopupOpen(true);
             console.log(`opening account creation popup`);
+        }
+        if (id === 'account-settings') {
+            setIsAccountSettingsPopupOpen(true);
+            console.log(`opening account settings popup`);
         }
         if (id === 'sign-out') {
             handleSignOut();
@@ -104,6 +111,13 @@ function Account(): React.JSX.Element {
         setLoginStatus(false);
         setIsMenuOpen(false);
         openSignOutSuccessPopup();
+        setIsAccountSettingsPopupOpen(false);
+        handleMapLogout();
+    };
+
+    const handleAccountDeletion = (): void => {
+        handleSignOut();
+        setIsAccountDeletionPopupOpen(false);
     };
 
     return (
@@ -209,6 +223,23 @@ function Account(): React.JSX.Element {
             {showSignOutSuccessPopup && (
                 <div className="success-popup">
                     <p>Sign-out successful!</p>
+                </div>
+            )
+            }
+            {isAccountSettingsPopupOpen && (
+                <div className="settings-overlay">
+                    <div className="settings-popup">
+                        <button className="close-button" onClick={() => setIsAccountSettingsPopupOpen(false)}>Close</button>
+                        <button className="delete-account-button" onClick={() => setIsAccountDeletionPopupOpen(true)}>Delete Account</button>
+                    </div>
+                </div>
+            )
+            }
+            {isAccountDeletionPopupOpen && (
+                <div className="deletion-popup">
+                    <p>Are you sure you want to delete your account?</p>
+                    <button className="confirm-button" onClick={handleAccountDeletion}>Confirm</button>
+                    <button className="close-button" onClick={() => setIsAccountDeletionPopupOpen(false)}>Cancel</button>
                 </div>
             )
             }
