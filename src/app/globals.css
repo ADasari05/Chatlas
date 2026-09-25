@@ -109,6 +109,52 @@
     border-radius: 6px;
 }
 
+.search-suggestions {
+    width: 300px;
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    overflow-y: auto;
+    max-height: 260px;
+}
+
+.search-suggestions li {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 14px;
+    cursor: pointer;
+}
+
+.search-suggestions li:hover {
+    background-color: #296fa9;
+}
+
+.search-suggestions li:hover .suggestion-name,
+.search-suggestions li:hover .suggestion-context {
+    color: white;
+}
+
+.suggestion-name {
+    font-size: 14px;
+}
+
+.suggestion-context {
+    font-size: 12px;
+    color: #666;
+}
+
+.search-error {
+    width: 300px;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    background-color: white;
+    border: 1px solid #d9534f;
+    border-radius: 6px;
+    color: #d9534f;
+    font-size: 13px;
+}
+
 .map {
     position: relative;
     width: 100%;

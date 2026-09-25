@@ -5,14 +5,20 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import MapStyleMenu, { MapStyleOption } from './MapStyleMenu';
 
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN as string;
-mapboxgl.prewarm();
-
 const MAP_STYLES: MapStyleOption[] = [
     { id: 'streets', label: 'Streets', url: 'mapbox://styles/mapbox/streets-v12' },
     { id: 'satellite-streets', label: 'Satellite Streets', url: 'mapbox://styles/mapbox/satellite-streets-v12' },
     { id: 'navigation-dark', label: 'Navigation Dark', url: 'mapbox://styles/mapbox/navigation-night-v1' },
 ];
+
+export interface SelectedLocation {
+    name: string;
+    center: [number, number];
+}
+
+interface MapProps {
+    selectedLocation?: SelectedLocation | null;
+}
 
 function setStreetLayersVisible(map: mapboxgl.Map, visible: boolean): void {
     for (const layer of map.getStyle()?.layers ?? []) {
@@ -22,7 +28,7 @@ function setStreetLayersVisible(map: mapboxgl.Map, visible: boolean): void {
     }
 }
 
-function Map(): React.JSX.Element {
+function Map({ selectedLocation }: MapProps): React.JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<mapboxgl.Map | null>(null);
     const [activeStyleId, setActiveStyleId] = useState<string>(MAP_STYLES[0].id);
@@ -32,6 +38,9 @@ function Map(): React.JSX.Element {
 
     useEffect(() => {
         if (!containerRef.current) return;
+
+        mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN as string;
+        mapboxgl.prewarm();
 
         const map = new mapboxgl.Map({
             container: containerRef.current,
@@ -55,6 +64,11 @@ function Map(): React.JSX.Element {
             mapRef.current = null;
         };
     }, []);
+
+    useEffect(() => {
+        if (!selectedLocation || !mapRef.current) return;
+        mapRef.current.flyTo({ center: selectedLocation.center, zoom: 4 });
+    }, [selectedLocation]);
 
     const handleStyleChange = (style: MapStyleOption): void => {
         mapRef.current?.setStyle(style.url);

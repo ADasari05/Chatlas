@@ -3,12 +3,17 @@
 import React, { useState, useEffect } from 'react';
 import { Tab, Tabs, TabList, TabPanel } from 'react-tabs';
 import 'react-tabs/style/react-tabs.css';
+import { SelectedLocation } from './Map';
 
 export function OpenPanel(): void {
     window.dispatchEvent(new Event('openInfoPanel'));
 }
 
-function InfoPanel(): React.JSX.Element | null {
+interface InfoPanelProps {
+    selectedLocation?: SelectedLocation | null;
+}
+
+function InfoPanel({ selectedLocation }: InfoPanelProps): React.JSX.Element | null {
     const [isOpen, setIsOpen] = useState<boolean>(true);
     const [height, setHeight] = useState<number>(60);
     const [dragging, setDragging] = useState<boolean>(false);
@@ -54,6 +59,8 @@ function InfoPanel(): React.JSX.Element | null {
         return null;
     }
 
+    const locationLabel = selectedLocation ? selectedLocation.name : 'Please Select a Location';
+
     return (
         <div className="info-panel" style={{ height: `${height}%` }}>
             <div>
@@ -72,10 +79,10 @@ function InfoPanel(): React.JSX.Element | null {
                     <Tab>News</Tab>
                     <Tab>Media</Tab>
                 </TabList>
-                <TabPanel className="info-content">Background: Please Select a Location</TabPanel>
-                <TabPanel className="info-content">History/Culture: Please Select a Location</TabPanel>
-                <TabPanel className="info-content">News: Please Select a Location</TabPanel>
-                <TabPanel className="info-content">Media: Please Select a Location</TabPanel>
+                <TabPanel className="info-content">Background: {locationLabel}</TabPanel>
+                <TabPanel className="info-content">History/Culture: {locationLabel}</TabPanel>
+                <TabPanel className="info-content">News: {locationLabel}</TabPanel>
+                <TabPanel className="info-content">Media: {locationLabel}</TabPanel>
             </Tabs>
         </div>
     );

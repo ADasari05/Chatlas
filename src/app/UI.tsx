@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import './globals.css';
-import Map from './Map';
+import Map, { SelectedLocation } from './Map';
 import InfoPanel, { OpenPanel } from './InfoPanel';
+import SearchBar from './SearchBar';
 import Account from './Account';
 
 interface MenuOption {
@@ -24,10 +25,11 @@ const UI: React.FC = () => {
         console.log(`Clicked: ${label} button`);
     };
 
-    const [text, setText] = useState<string>('');
+    const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
 
-    const handleChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
-        setText(event.target.value);
+    const handleLocationSelected = (location: SelectedLocation): void => {
+        setSelectedLocation(location);
+        OpenPanel();
     };
 
     return (
@@ -51,16 +53,9 @@ const UI: React.FC = () => {
                 <Account />
             </div>
             <div className="main-content">
-                <div className="search-bar">
-                    <input
-                        type="text"
-                        value={text}
-                        onChange={handleChange}
-                        placeholder="Enter a Country or City"
-                    />
-                </div>
-                <Map />
-                <InfoPanel />
+                <SearchBar onLocationSelected={handleLocationSelected} />
+                <Map selectedLocation={selectedLocation} />
+                <InfoPanel selectedLocation={selectedLocation} />
             </div>
         </div>
     );
