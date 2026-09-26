@@ -7,6 +7,27 @@ import { SelectedLocation } from './Map';
 const searchBox = new SearchBoxCore({ accessToken: process.env.NEXT_PUBLIC_MAPBOX_TOKEN as string });
 const SEARCH_TYPES = 'country,region,place';
 const DEBOUNCE_MS = 200;
+const HISTORY_KEY = 'chatlas-search-history';
+const MAX_HISTORY = 5;
+
+function loadHistory(): SelectedLocation[] {
+    if (typeof window === 'undefined') return [];
+
+    try {
+        const raw = localStorage.getItem(HISTORY_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveHistory(history: SelectedLocation[]): void {
+    try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch {
+        // Ignore write failures (e.g. private browsing storage limits).
+    }
+}
 
 const FEATURE_TYPE_LABELS: Record<string, string> = {
     country: 'Country',
@@ -26,6 +47,8 @@ function SearchBar({ onLocationSelected }: SearchBarProps): React.JSX.Element {
     const [text, setText] = useState<string>('');
     const [suggestions, setSuggestions] = useState<SearchBoxSuggestion[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [history, setHistory] = useState<SelectedLocation[]>(() => loadHistory());
+    const [isFocused, setIsFocused] = useState(false);
     const sessionTokenRef = useRef(new SessionToken());
 
     useEffect(() => {
@@ -50,6 +73,14 @@ function SearchBar({ onLocationSelected }: SearchBarProps): React.JSX.Element {
         return () => clearTimeout(timer);
     }, [text]);
 
+    const addToHistory = (location: SelectedLocation): void => {
+        setHistory((prev) => {
+            const next = [location, ...prev].slice(0, MAX_HISTORY);
+            saveHistory(next);
+            return next;
+        });
+    };
+
     const selectSuggestion = async (suggestion: SearchBoxSuggestion): Promise<void> => {
         try {
             const response = await searchBox.retrieve(suggestion, { sessionToken: sessionTokenRef.current });
@@ -59,10 +90,12 @@ function SearchBar({ onLocationSelected }: SearchBarProps): React.JSX.Element {
                 return;
             }
 
-            onLocationSelected({
+            const location: SelectedLocation = {
                 name: suggestion.name,
                 center: feature.geometry.coordinates as [number, number],
-            });
+            };
+            onLocationSelected(location);
+            addToHistory(location);
             setText(suggestion.name);
             setSuggestions([]);
             setError(null);
@@ -71,6 +104,12 @@ function SearchBar({ onLocationSelected }: SearchBarProps): React.JSX.Element {
             console.error('Search retrieve failed:', err);
             setError('Search failed. Try again.');
         }
+    };
+
+    const selectHistoryItem = (location: SelectedLocation): void => {
+        onLocationSelected(location);
+        setText(location.name);
+        setIsFocused(false);
     };
 
     const handleChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
@@ -92,6 +131,8 @@ function SearchBar({ onLocationSelected }: SearchBarProps): React.JSX.Element {
         void selectSuggestion(suggestion);
     };
 
+    const showHistory = isFocused && !text.trim() && suggestions.length === 0 && history.length > 0;
+
     return (
         <div className="search-bar">
             <form onSubmit={handleSubmit} autoComplete="off">
@@ -99,6 +140,8 @@ function SearchBar({ onLocationSelected }: SearchBarProps): React.JSX.Element {
                     type="text"
                     value={text}
                     onChange={handleChange}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
                     placeholder="Enter a Country, State, or City"
                 />
             </form>
@@ -111,6 +154,16 @@ function SearchBar({ onLocationSelected }: SearchBarProps): React.JSX.Element {
                         >
                             <span className="suggestion-name">{suggestion.name}</span>
                             <span className="suggestion-context">{suggestionContext(suggestion)}</span>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {showHistory && (
+                <ul className="search-suggestions">
+                    <li className="search-suggestions-label">Recent Searches</li>
+                    {history.map((location) => (
+                        <li key={`${location.name}-${location.center.join(',')}`} onMouseDown={() => selectHistoryItem(location)}>
+                            <span className="suggestion-name">{location.name}</span>
                         </li>
                     ))}
                 </ul>

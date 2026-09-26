@@ -130,6 +130,17 @@
     background-color: #296fa9;
 }
 
+.search-suggestions-label {
+    font-size: 11px;
+    color: #999;
+    text-transform: uppercase;
+    cursor: default;
+}
+
+.search-suggestions-label:hover {
+    background-color: transparent !important;
+}
+
 .search-suggestions li:hover .suggestion-name,
 .search-suggestions li:hover .suggestion-context {
     color: white;
