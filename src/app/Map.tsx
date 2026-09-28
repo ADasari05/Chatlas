@@ -29,8 +29,16 @@ const CLICKED_CITY_DATA = 'clicked-city-data';
 const CLICKED_CITY_DOT = 'clicked-city-dot';
 const CLICK_COLOR = '#b21c1c';
 
-const waypoints: { lat: number; lng: number }[] = [];
 const waypointMarkers: mapboxgl.Marker[] = [];
+
+export function handleMapLogin(): void {
+    // TODO: Add in user waypoints from server
+}
+
+// Handle map logout by removing all waypoints
+export function handleMapLogout(): void {
+    removeAllWaypoints();
+}
 
 function setStreetLayersVisible(map: mapboxgl.Map, visible: boolean): void {
     for (const layer of map.getStyle()?.layers ?? []) {
@@ -50,16 +58,11 @@ function setWaypointsVisible(map: mapboxgl.Map, visible: boolean): void {
     }
 }
 
-export function handleMapLogout(): void {
-    removeAllWaypoints();
-}
-
 function removeAllWaypoints(): void {
     for (const marker of waypointMarkers) {
         marker.remove();
     }
     waypointMarkers.length = 0;
-    waypoints.length = 0;
 }
 
 function addHoverEffect(map: mapboxgl.Map): void {
@@ -375,7 +378,7 @@ function Map(): React.JSX.Element {
                 console.log("User not logged in, cannot add waypoint");
                 return;
             }
-            if(waypoints.length >= 5 || !showWaypointsRef.current) {
+            if(waypointMarkers.length >= 5 || !showWaypointsRef.current) {
                 console.log("Waypoint limit reached or waypoints not visible, cannot add waypoint");
                 return;
             }
@@ -393,7 +396,6 @@ function Map(): React.JSX.Element {
                 console.log('marker clicked');
             });
 
-            waypoints.push({ lat: e.lngLat.lat, lng: e.lngLat.lng });
             waypointMarkers.push(marker);
         });
 
@@ -438,7 +440,6 @@ function Map(): React.JSX.Element {
 
     const removeLastWaypoint = (): void => {
         const lastWaypoint = waypointMarkers.pop();
-        waypoints.pop();
         lastWaypoint?.remove();
     }
 
@@ -447,7 +448,6 @@ function Map(): React.JSX.Element {
         const index = selectedWaypointIndex;
         const waypoint = waypointMarkers[index];
         waypointMarkers.splice(index, 1);
-        waypoints.splice(index, 1);
         waypoint.remove();
         setSelectedWaypointIndex(null);
     };
