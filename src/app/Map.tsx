@@ -460,6 +460,33 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
         };
     }, []);
 
+    const simulateClickAtLngLat = (map: mapboxgl.Map): void => {
+        if (!selectedLocation) {
+            return;
+        }
+        const [lng, lat] = selectedLocation.center;
+        
+        const targetZoom = selectedLocation.city ? 10 : 4; 
+
+        map.jumpTo({ 
+            center: [lng, lat], 
+            zoom: targetZoom 
+        });
+
+        map.once('idle', () => {
+            const targetLngLat = { lng, lat };
+            const targetPoint = map.project([lng, lat]);
+
+            map.fire('click', {
+                lngLat: targetLngLat,
+                point: targetPoint,
+                originalEvent: {
+                    detail: 1
+                }
+            });
+        });
+    };
+
     useEffect(() => {
         if (!selectedLocation || !mapRef.current) return;
         // Map clicks already move the map themselves
@@ -469,6 +496,7 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
             zoom: 4,
             padding: { top: 0, left: 0, right: 0, bottom: window.innerHeight * 0.6 },
         });
+        simulateClickAtLngLat(mapRef.current);
     }, [selectedLocation]);
 
     const handleStyleChange = (style: MapStyleOption): void => {
