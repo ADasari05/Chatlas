@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { SearchBoxCore, SessionToken, SearchBoxSuggestion } from '@mapbox/search-js-core';
-import { SelectedLocation } from './Map';
+import { SelectedLocation, locationName } from './Map';
 
 const searchBox = new SearchBoxCore({ accessToken: process.env.NEXT_PUBLIC_MAPBOX_TOKEN as string });
 const SEARCH_TYPES = 'country,region,place';
@@ -15,7 +15,9 @@ function loadHistory(): SelectedLocation[] {
 
     try {
         const raw = localStorage.getItem(HISTORY_KEY);
-        return raw ? JSON.parse(raw) : [];
+        const saved: SelectedLocation[] = raw ? JSON.parse(raw) : [];
+        // Drop entries saved before locations had ids
+        return saved.filter((location) => location.id);
     } catch {
         return [];
     }
@@ -37,6 +39,32 @@ const FEATURE_TYPE_LABELS: Record<string, string> = {
 
 function suggestionContext(suggestion: SearchBoxSuggestion): string {
     return suggestion.place_formatted || FEATURE_TYPE_LABELS[suggestion.feature_type] || suggestion.feature_type;
+}
+
+// Ids match the ones map clicks produce: country code for countries,
+// region code (or country code) + name for cities
+function toSelectedLocation(suggestion: SearchBoxSuggestion, center: [number, number]): SelectedLocation {
+    const { country, region } = suggestion.context ?? {};
+    const countryCode = country?.country_code?.toUpperCase() ?? '';
+
+    if (suggestion.feature_type === 'country') {
+        return { id: countryCode || suggestion.name, country: suggestion.name, center };
+    }
+
+    const countryName = country?.name ?? '';
+    if (suggestion.feature_type === 'region') {
+        const regionId = region?.region_code_full?.toUpperCase() ?? `${countryCode}:${suggestion.name}`;
+        return { id: regionId, country: countryName, region: suggestion.name, center };
+    }
+
+    const regionCode = region?.region_code_full?.toUpperCase() ?? countryCode;
+    return {
+        id: `${regionCode}:${suggestion.name}`,
+        country: countryName,
+        region: region?.name,
+        city: suggestion.name,
+        center,
+    };
 }
 
 interface SearchBarProps {
@@ -90,10 +118,7 @@ function SearchBar({ onLocationSelected }: SearchBarProps): React.JSX.Element {
                 return;
             }
 
-            const location: SelectedLocation = {
-                name: suggestion.name,
-                center: feature.geometry.coordinates as [number, number],
-            };
+            const location = toSelectedLocation(suggestion, feature.geometry.coordinates as [number, number]);
             onLocationSelected(location);
             addToHistory(location);
             setText(suggestion.name);
@@ -108,7 +133,7 @@ function SearchBar({ onLocationSelected }: SearchBarProps): React.JSX.Element {
 
     const selectHistoryItem = (location: SelectedLocation): void => {
         onLocationSelected(location);
-        setText(location.name);
+        setText(locationName(location));
         setIsFocused(false);
     };
 
@@ -162,8 +187,8 @@ function SearchBar({ onLocationSelected }: SearchBarProps): React.JSX.Element {
                 <ul className="search-suggestions">
                     <li className="search-suggestions-label">Recent Searches</li>
                     {history.map((location) => (
-                        <li key={`${location.name}-${location.center.join(',')}`} onMouseDown={() => selectHistoryItem(location)}>
-                            <span className="suggestion-name">{location.name}</span>
+                        <li key={`${location.id}-${location.center.join(',')}`} onMouseDown={() => selectHistoryItem(location)}>
+                            <span className="suggestion-name">{locationName(location)}</span>
                         </li>
                     ))}
                 </ul>

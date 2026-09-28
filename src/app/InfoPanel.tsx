@@ -3,20 +3,33 @@
 import React, { useState, useEffect } from 'react';
 import { Tab, Tabs, TabList, TabPanel } from 'react-tabs';
 import 'react-tabs/style/react-tabs.css';
-import { SelectedLocation } from './Map';
+import { SelectedLocation, locationLabel } from './Map';
 
 export function OpenPanel(): void {
     window.dispatchEvent(new Event('openInfoPanel'));
+}
+
+const tabs = ['Background', 'History/Culture', 'News', 'Media'];
+
+async function loadTab(tabIndex: number, location: SelectedLocation | null): Promise<string> {
+    if (!location) {
+        return `${tabs[tabIndex]}: Please Select a Location`;
+    }
+    // TODO: Pull tab data from APIs
+    return `Loading ${tabs[tabIndex]} for ${locationLabel(location)}...`;
 }
 
 interface InfoPanelProps {
     selectedLocation?: SelectedLocation | null;
 }
 
-function InfoPanel({ selectedLocation }: InfoPanelProps): React.JSX.Element | null {
-    const [isOpen, setIsOpen] = useState<boolean>(true);
+function InfoPanel({ selectedLocation = null }: InfoPanelProps): React.JSX.Element | null {
+    const [isOpen, setIsOpen] = useState<boolean>(false);
     const [height, setHeight] = useState<number>(60);
     const [dragging, setDragging] = useState<boolean>(false);
+
+    const [tabIndex, setTabIndex] = useState<number>(1);
+    const [tabText, setTabText] = useState<Record<number, string>>({});
 
     useEffect(() => {
         const openPanel = (): void => {
@@ -30,6 +43,28 @@ function InfoPanel({ selectedLocation }: InfoPanelProps): React.JSX.Element | nu
             window.removeEventListener('openInfoPanel', openPanel);
         };
     }, []);
+
+    // Clear cached tab text when a new location is selected
+    useEffect(() => {
+        setTabText({});
+    }, [selectedLocation]);
+
+    useEffect(() => {
+        if (tabText[tabIndex] !== undefined) {
+            return;
+        }
+
+        let cancelled = false;
+        loadTab(tabIndex, selectedLocation).then((text) => {
+            if (!cancelled) {
+                setTabText((old) => ({ ...old, [tabIndex]: text }));
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedLocation, tabIndex, tabText]);
 
     const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>): void => {
         setDragging(true);
@@ -59,8 +94,6 @@ function InfoPanel({ selectedLocation }: InfoPanelProps): React.JSX.Element | nu
         return null;
     }
 
-    const locationLabel = selectedLocation ? selectedLocation.name : 'Please Select a Location';
-
     return (
         <div className="info-panel" style={{ height: `${height}%` }}>
             <div>
@@ -72,17 +105,18 @@ function InfoPanel({ selectedLocation }: InfoPanelProps): React.JSX.Element | nu
                 <div className="drag-bar"></div>
             </div>
 
-            <Tabs defaultIndex={1} onSelect={(index: number) => console.log(index)}>
+            <Tabs selectedIndex={tabIndex} onSelect={(index: number) => setTabIndex(index)}>
                 <TabList>
                     <Tab>Background</Tab>
                     <Tab>History/Culture</Tab>
                     <Tab>News</Tab>
                     <Tab>Media</Tab>
                 </TabList>
-                <TabPanel className="info-content">Background: {locationLabel}</TabPanel>
-                <TabPanel className="info-content">History/Culture: {locationLabel}</TabPanel>
-                <TabPanel className="info-content">News: {locationLabel}</TabPanel>
-                <TabPanel className="info-content">Media: {locationLabel}</TabPanel>
+                {tabs.map((label, index) => (
+                    <TabPanel key={label} className="info-content">
+                        {tabText[index] ?? 'Loading...'}
+                    </TabPanel>
+                ))}
             </Tabs>
         </div>
     );

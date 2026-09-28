@@ -54,7 +54,7 @@ const UI: React.FC = () => {
             </div>
             <div className="main-content">
                 <SearchBar onLocationSelected={handleLocationSelected} />
-                <Map selectedLocation={selectedLocation} />
+                <Map selectedLocation={selectedLocation} onLocationSelected={handleLocationSelected} />
                 <InfoPanel selectedLocation={selectedLocation} />
             </div>
         </div>
