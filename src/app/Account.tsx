@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { handleMapLogout } from './Map';
+import { supabase } from '@/lib/Supabase';
 
 interface AccountOption {
     id: string;
@@ -32,8 +33,39 @@ function Account(): React.JSX.Element {
     const [showSignOutSuccessPopup, setShowSignOutSuccessPopup] = React.useState<boolean>(false);
     const [accountCreationError, setAccountCreationError] = React.useState<string | null>(null);
     const [accountSignInError, setAccountSignInError] = React.useState<string | null>(null);
+    const [accountDeletionError, setAccountDeletionError] = React.useState<string | null>(null);
 
-    const currentOptions = loginStatus ? accountOptions : accountLoginOptions;
+    const [isLoggedIn, setIsLoggedIn] = React.useState<boolean>(false);
+    const [email, setEmail] = React.useState<string>('');
+    const [username, setUsername] = React.useState<string>('');
+    const [password, setPassword] = React.useState<string>('');
+    const [confirmPassword, setConfirmPassword] = React.useState<string>('');
+    const [isLoading, setIsLoading] = React.useState<boolean>(false);
+
+    const currentOptions = isLoggedIn ? accountOptions : accountLoginOptions;
+
+    // Detect changes in the authentication state and update the login status accordingly
+    useEffect(() => {
+        const { data } = supabase.auth.onAuthStateChange((event, session) => {
+            const signedIn = session !== null;
+            setLoginStatus(signedIn);
+            setIsLoggedIn(signedIn);
+            if (event === 'SIGNED_OUT') {
+                handleMapLogout();
+            }
+        });
+ 
+        return () => data.subscription.unsubscribe();
+    }, []);
+
+    const resetForm = (): void => {
+        setEmail('');
+        setUsername('');
+        setPassword('');
+        setConfirmPassword('');
+        setAccountSignInError(null);
+        setAccountCreationError(null);
+    };
 
     const handleInputSelection = (): void => {
         setAccountSignInError(null);
@@ -85,38 +117,83 @@ function Account(): React.JSX.Element {
         }
     }, [showSignOutSuccessPopup]);
 
-    const handleSignIn = (): void => {
-        //TODO: server validation
-        if (1 != 1) {
-            setAccountSignInError("Invalid email or password");
+    const handleSignIn = async (): Promise<void> => {
+        if(!email || !password) {
+            setAccountSignInError('Please fill in all fields.');
             return;
         }
-        else {
-            setAccountSignInError(null);
+        setIsLoading(true);
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        setIsLoading(false);
+        if (error) {
+            setAccountSignInError(error.message);
+            return;
         }
+        resetForm();
         setLoginStatus(true);
         setIsLoginPopupOpen(false);
         openSignInSuccessPopup();
     };
 
-    const handleAccountCreation = (): void => {
-        //TODO: server validation
-        setLoginStatus(true);
-        setIsAccountCreationPopupOpen(false);
-        openSignInSuccessPopup();
+    const handleAccountCreation = async (): Promise<void> => {
+        if(!email || !username || !password || !confirmPassword) {
+            setAccountCreationError('Please fill in all fields.');
+            return;
+        }
+        const { data: existingUserName } = await supabase
+        .from('profiles')
+        .select('display_name')
+        .eq('display_name', username)
+        .maybeSingle();
+
+        if (existingUserName) {
+            setAccountCreationError('This username is already taken.');
+            return;
+        }
+        const { data: existingUserEmail } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('email', email)
+        .maybeSingle();
+
+        if (existingUserEmail) {
+            setAccountCreationError('This email is already registered.');
+            return;
+        }
+        if(password !== confirmPassword) {
+            setAccountCreationError('Passwords do not match.');
+            return;
+        }
+        setIsLoading(true);
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: { data: { display_name:username } },
+        });
+        setIsLoading(false);
+        if (error) {
+            setAccountCreationError(error.message);
+            return;
+        }
+        setAccountCreationError(null);
+        if (data.session) {
+            resetForm();
+            setIsAccountCreationPopupOpen(false);
+            openSignInSuccessPopup();
+        }
     };
 
-    const handleSignOut = (): void => {
-        //TODO: server validation
-        setLoginStatus(false);
+    const handleSignOut = async (): Promise<void> => {
+        await supabase.auth.signOut();
         setIsMenuOpen(false);
-        openSignOutSuccessPopup();
         setIsAccountSettingsPopupOpen(false);
+        openSignOutSuccessPopup();
+        setLoginStatus(false);
         handleMapLogout();
     };
 
-    const handleAccountDeletion = (): void => {
-        handleSignOut();
+    const handleAccountDeletion = async (): Promise<void> => {
+        await handleSignOut();
         setIsAccountDeletionPopupOpen(false);
     };
 
@@ -153,10 +230,14 @@ function Account(): React.JSX.Element {
                         <input
                             type="text"
                             placeholder="Email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
                         />
                         <input
                             type="password"
                             placeholder="Password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
                         />
                         {accountSignInError && (
                             <p className="error-message">{accountSignInError}</p>
@@ -164,12 +245,13 @@ function Account(): React.JSX.Element {
                         <button
                             className="sign-in-button"
                             onClick={handleSignIn}
+                            disabled={isLoading}
                         >
                             Confirm
                         </button>
                         <button
                             className="close-button"
-                            onClick={() => setIsLoginPopupOpen(false)}
+                            onClick={() => { resetForm(); setIsLoginPopupOpen(false); }}
                         >
                             Cancel
                         </button>
@@ -183,18 +265,26 @@ function Account(): React.JSX.Element {
                         <input
                             type="text"
                             placeholder="Email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
                         />
                         <input
                             type="text"
                             placeholder="Username"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
                         />
                         <input
                             type="password"
                             placeholder="Password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
                         />
                         <input
                             type="password"
                             placeholder="Confirm Password"
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
                         />
                         {accountCreationError && (
                             <p className="error-message">{accountCreationError}</p>
@@ -202,12 +292,13 @@ function Account(): React.JSX.Element {
                         <button
                             className="sign-in-button"
                             onClick={handleAccountCreation}
+                            disabled={isLoading}
                         >
                             Confirm
                         </button>
                         <button
                             className="close-button"
-                            onClick={() => setIsAccountCreationPopupOpen(false)}
+                            onClick={() => { resetForm(); setIsAccountCreationPopupOpen(false); }}
                         >
                             Cancel
                         </button>
@@ -230,7 +321,9 @@ function Account(): React.JSX.Element {
                 <div className="settings-overlay">
                     <div className="settings-popup">
                         <button className="close-button" onClick={() => setIsAccountSettingsPopupOpen(false)}>Close</button>
-                        <button className="delete-account-button" onClick={() => setIsAccountDeletionPopupOpen(true)}>Delete Account</button>
+                        <button className="delete-account-button" onClick={() => { setAccountDeletionError(null); setIsAccountDeletionPopupOpen(true); }}>
+                            Delete Account
+                        </button>
                     </div>
                 </div>
             )
@@ -238,7 +331,10 @@ function Account(): React.JSX.Element {
             {isAccountDeletionPopupOpen && (
                 <div className="deletion-popup">
                     <p>Are you sure you want to delete your account?</p>
-                    <button className="confirm-button" onClick={handleAccountDeletion}>Confirm</button>
+                    {accountDeletionError && (
+                        <p className="error-message">{accountDeletionError}</p>
+                    )}
+                    <button className="confirm-button" onClick={handleAccountDeletion} disabled={isLoading}>Confirm</button>
                     <button className="close-button" onClick={() => setIsAccountDeletionPopupOpen(false)}>Cancel</button>
                 </div>
             )
