@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { handleMapLogout } from './Map';
-import { supabase } from '@/lib/Supabase';
+import { createClient } from '@/utils/supabase/client';
 
 interface AccountOption {
     id: string;
@@ -14,6 +14,8 @@ export function setLoginStatus(status: boolean): void {
 }
 
 function Account(): React.JSX.Element {
+    const [supabase] = React.useState(() => createClient());
+    
     const accountLoginOptions: AccountOption[] = [
         { id: 'sign-in', label: 'Sign In' },
         { id: 'create-account', label: 'Create Account' },
