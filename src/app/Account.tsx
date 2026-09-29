@@ -142,42 +142,57 @@ function Account(): React.JSX.Element {
             setAccountCreationError('Please fill in all fields.');
             return;
         }
-        const { data: existingUserName } = await supabase
-        .from('profiles')
-        .select('display_name')
-        .eq('display_name', username)
-        .maybeSingle();
-
-        if (existingUserName) {
-            setAccountCreationError('This username is already taken.');
-            return;
-        }
-        const { data: existingUserEmail } = await supabase
-        .from('profiles')
-        .select('email')
-        .eq('email', email)
-        .maybeSingle();
-
-        if (existingUserEmail) {
-            setAccountCreationError('This email is already registered.');
-            return;
-        }
-        if(password !== confirmPassword) {
+        if (password !== confirmPassword) {
             setAccountCreationError('Passwords do not match.');
             return;
         }
+ 
+        const { data: isTaken, error: UsernameError } = await supabase.rpc('is_display_name_taken', {
+            check_name: username,
+        });
+
+        if (UsernameError) {
+            setAccountCreationError('Could not verify username. Please try again.');
+            return;
+        }
+        if (isTaken) {
+            setAccountCreationError('This username is already taken.');
+            return;
+        }
+
         setIsLoading(true);
+
         const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: { data: { display_name:username } },
         });
-        setIsLoading(false);
+
         if (error) {
-            setAccountCreationError(error.message);
+            setIsLoading(false);
+            setAccountCreationError(
+                error.message.toLowerCase().includes('already registered')
+                    ? 'This email is already registered.'
+                    : error.message
+            );
             return;
         }
+
+        if (data.user) {
+            const { error: insertError } = await supabase.from('UserData').insert({
+                user_id: data.user.id,
+                user_name: username,
+            });
+            if (insertError?.code === '23505') {
+                setIsLoading(false);
+                setAccountCreationError('This username is already taken.');
+                return;
+            }
+        }
+
+        setIsLoading(false);
         setAccountCreationError(null);
+
         if (data.session) {
             resetForm();
             setIsAccountCreationPopupOpen(false);
