@@ -1,1 +1,509 @@
 @import "tailwindcss";
+
+.page {
+    display: flex;
+    width: 100%;
+    height: 100vh;
+}
+
+.sidebar {
+    height: 100vh;
+    width: 175px;
+    background-color: #071b2e;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-top: 2vh;
+    padding-left: 10px;
+    padding-right: 10px;
+    color: white;
+}
+
+.sidebar-header h2 {
+    margin: 0;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    color: white;
+    font-size: 25px;
+    font-weight: 600;
+    padding: 0px 0px 20px 8px;
+}
+
+.sidebar-buttons {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    flex-grow: 0.8;
+}
+
+.sidebar-buttons li {
+    margin-bottom: 6px;
+}
+
+.sidebar-buttons button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    background: transparent;
+    color: #dce7f2;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sidebar-buttons button:hover {
+    background-color: #123552;
+}
+
+.sidebar-buttons button.clicked {
+    background-color: #0878ed;
+    color: white;
+}
+
+.info-button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    background: transparent;
+    color: #dce7f2;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.info-button:hover {
+    background-color: #296fa9;
+}
+
+.main-content {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+}
+
+.search-bar {
+    margin-top: 10px;
+    position: absolute;
+    padding: 0 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 10;
+}
+
+.search-bar input {
+    width: 300px;
+    padding: 10px;
+    box-sizing: border-box;
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+.search-suggestions {
+    width: 300px;
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    overflow-y: auto;
+    max-height: 260px;
+}
+
+.search-suggestions li {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 14px;
+    cursor: pointer;
+}
+
+.search-suggestions li:hover {
+    background-color: #296fa9;
+}
+
+.search-suggestions-label {
+    font-size: 11px;
+    color: #999;
+    text-transform: uppercase;
+    cursor: default;
+}
+
+.search-suggestions-label:hover {
+    background-color: transparent !important;
+}
+
+.search-suggestions li:hover .suggestion-name,
+.search-suggestions li:hover .suggestion-context {
+    color: white;
+}
+
+.suggestion-name {
+    font-size: 14px;
+}
+
+.suggestion-context {
+    font-size: 12px;
+    color: #666;
+}
+
+.search-error {
+    width: 300px;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    background-color: white;
+    border: 1px solid #d9534f;
+    border-radius: 6px;
+    color: #d9534f;
+    font-size: 13px;
+}
+
+.map {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.map-canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.style-menu {
+    position: absolute;
+    top: 100px;
+    right: 10px;
+    z-index: 10;
+}
+
+.style-menu-toggle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: white;
+    border: 1px solid #ccc;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.style-menu-list {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    overflow-y: auto;
+    max-height: 300px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.style-menu-list button {
+    padding: 8px 14px;
+    border: none;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+}
+
+.style-menu-list button:hover {
+    background-color: #f1f1f1;
+}
+
+.style-menu-list button.active {
+    background-color: #296fa9;
+    color: white;
+}
+
+.style-menu-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-top: 1px solid #ccc;
+    cursor: pointer;
+}
+
+.info-panel {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: white;
+    z-index: 20;
+    border-radius: 15px 15px 0 0;
+    box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+}
+
+.drag-handle {
+    height: 25px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: ns-resize;
+}
+
+.drag-bar {
+    width: 50px;
+    height: 5px;
+    background-color: #aaaaaa;
+    border-radius: 5px;
+}
+
+.info-content {
+    overflow-y: auto;
+    padding-left: 15px;
+}
+
+.close-button {
+    position: absolute;
+    top: 8px;
+    right: 15px;
+    border: none;
+    background: none;
+    font-size: 15px;
+    cursor: pointer;
+    color: black;
+}
+
+.account-icon {
+    position: relative;
+    margin-top: auto;
+    margin-bottom: 20px;
+}
+
+.account-button {
+    width: 100%;
+    height: 60px;
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    cursor: pointer;
+}
+
+.account-button svg {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background-color: #fdfdfd;
+    border-radius: 50%;
+}
+
+.account-dropdown {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    background-color: #fdfdfd;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+}
+
+.account-dropdown button {
+    background: none;
+    border: none;
+    padding: 10px 20px;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+    color: #222;
+}
+
+.account-dropdown button:hover {
+    background-color: #f0f0f0;
+}
+
+.sign-in-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 350px;
+    padding: 25px;
+    color: black;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+}
+
+.sign-in-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+}
+
+.sign-in-popup input {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+.close-button {
+    cursor: pointer;
+    position: absolute;
+    background-color: #f1f0f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    height: 25px;
+    width: 50px;
+    top: 10px;
+    right: 10px;
+}
+
+.sign-in-button {
+    cursor: pointer;
+    position: relative;
+    background-color: #f1f0f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    height: 25px;
+    width: 60px;
+}
+
+.success-popup {
+    position: fixed;
+    top: 10%;
+    left: 50%;
+    text-align: center;
+    transform: translate(-50%, -50%);
+    width: 350px;
+    padding: 25px;
+    background-color: rgb(209, 209, 209);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+}
+
+.error-message {
+    color: rgb(180, 35, 35);
+    font-size: 14px;
+    margin-top: 5px;
+}
+
+.waypoint-popup {
+    position: fixed;
+    top: 25%;
+    left: 55%;
+    transform: translate(-50%, -50%);
+    width: 350px;
+    padding: 25px;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+}
+
+.waypoint-confirm-button {
+    cursor: pointer;
+    position: relative;
+    top: 10px;
+    background-color: #f1f0f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    height: 25px;
+    width: 60px;
+}
+
+.waypoint-cancel-button {
+    cursor: pointer;
+    position: relative;
+    top: 10px;
+    left: 20px;
+    color: black;
+    background-color: #f1f0f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    height: 25px;
+    width: 60px;
+}
+
+.waypoint-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+}
+
+.settings-popup {
+    position: fixed;
+    top: 25%;
+    left: 55%;
+    transform: translate(-50%, -50%);
+    width: 350px;
+    padding: 25px;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+}
+
+.delete-account-button {
+    cursor: pointer;
+    position: relative;
+    top: 10px;
+    color: black;
+    background-color: #f1f0f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    height: 50px;
+    width: 80px;
+}
+
+.settings-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+}
+
+.deletion-popup {
+    position: fixed;
+    top: 25%;
+    left: 55%;
+    transform: translate(-50%, -50%);
+    width: 350px;
+    padding: 25px;
+    color: black;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+}
+
+.confirm-button {
+    cursor: pointer;
+    position: relative;
+    top: 10px;
+    color: black;
+    background-color: #f1f0f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    height: 25px;
+    width: 60px;
+}
