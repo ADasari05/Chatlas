@@ -38,3 +38,7 @@ pnpm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Claude Code local-only memory (personal, not shared with team)
+CLAUDE.local.md
+CLAUDE.local.backlog.md
