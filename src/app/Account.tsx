@@ -126,11 +126,25 @@ function Account(): React.JSX.Element {
         }
         setIsLoading(true);
         const { error } = await supabase.auth.signInWithPassword({ email, password });
-        setIsLoading(false);
         if (error) {
             setAccountSignInError(error.message);
             return;
         }
+
+        const { data: disabled, error: statusError } = await supabase.rpc('is_current_user_disabled');
+        setIsLoading(false);
+
+        if (statusError) {
+            setAccountSignInError('Could not verify your account status. Please try again.');
+            await supabase.auth.signOut();
+            return;
+        }
+        if (disabled) {
+            await supabase.auth.signOut();
+            setAccountSignInError('This account is pending deletion and cannot be signed into.');
+            return;
+        }
+
         resetForm();
         setLoginStatus(true);
         setIsLoginPopupOpen(false);
@@ -147,15 +161,26 @@ function Account(): React.JSX.Element {
             return;
         }
  
-        const { data: isTaken, error: UsernameError } = await supabase.rpc('is_display_name_taken', {
-            check_name: username,
-        });
+       const [usernameTaken, emailStatus] = await Promise.all([
+            supabase.rpc('is_display_name_taken', { check_name: username }),
+            supabase.rpc('get_email_status', { check_email: email }).maybeSingle(),
+        ]);
 
-        if (UsernameError) {
-            setAccountCreationError('Could not verify username. Please try again.');
+        if (usernameTaken.error || emailStatus.error) {
+            setAccountCreationError('Could not verify account details. Please try again.');
             return;
         }
-        if (isTaken) {
+    
+        if (emailStatus.data?.exists_already) {
+            setAccountCreationError(
+                emailStatus.data.disabled
+                    ? 'This email belongs to an account pending deletion. Please use a different email.'
+                    : 'This email is already registered.'
+            );
+            return;
+        }
+
+        if (usernameTaken.data) {
             setAccountCreationError('This username is already taken.');
             return;
         }
@@ -210,8 +235,17 @@ function Account(): React.JSX.Element {
     };
 
     const handleAccountDeletion = async (): Promise<void> => {
-        await handleSignOut();
+        setIsLoading(true);
+        const { error } = await supabase.rpc('request_account_deletion');
+        setIsLoading(false);
+
+        if (error) {
+            setAccountDeletionError('Could not process deletion request. Please try again.');
+            return;
+        }
+
         setIsAccountDeletionPopupOpen(false);
+        await handleSignOut();
     };
 
     return (
