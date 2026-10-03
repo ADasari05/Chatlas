@@ -125,30 +125,30 @@ function Account(): React.JSX.Element {
             return;
         }
         setIsLoading(true);
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) {
-            setAccountSignInError(error.message);
-            return;
-        }
+        try {
+            const [signInResult, statusResult] = await Promise.all([
+                supabase.auth.signInWithPassword({ email, password }),
+                supabase.rpc('get_email_status', { check_email: email }).maybeSingle(),
+            ]);
 
-        const { data: disabled, error: statusError } = await supabase.rpc('is_current_user_disabled');
-        setIsLoading(false);
+            if (signInResult.error) {
+                setAccountSignInError(signInResult.error.message);
+                return;
+            }
 
-        if (statusError) {
-            setAccountSignInError('Could not verify your account status. Please try again.');
-            await supabase.auth.signOut();
-            return;
-        }
-        if (disabled) {
-            await supabase.auth.signOut();
-            setAccountSignInError('This account is pending deletion and cannot be signed into.');
-            return;
-        }
+            if (statusResult.data?.disabled) {
+                await supabase.auth.signOut();
+                setAccountSignInError('This account is pending deletion and cannot be signed in to.');
+                return;
+            }
 
-        resetForm();
-        setLoginStatus(true);
-        setIsLoginPopupOpen(false);
-        openSignInSuccessPopup();
+            resetForm();
+            setLoginStatus(true);
+            setIsLoginPopupOpen(false);
+            openSignInSuccessPopup();
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleAccountCreation = async (): Promise<void> => {
@@ -205,7 +205,7 @@ function Account(): React.JSX.Element {
 
         if (data.user) {
             const { error: insertError } = await supabase.from('UserData').insert({
-                user_id: data.user.id,
+                id: data.user.id,
                 user_name: username,
             });
             if (insertError?.code === '23505') {
