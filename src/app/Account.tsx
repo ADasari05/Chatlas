@@ -30,12 +30,14 @@ function Account(): React.JSX.Element {
     const [isLoginPopupOpen, setIsLoginPopupOpen] = React.useState<boolean>(false);
     const [isAccountSettingsPopupOpen, setIsAccountSettingsPopupOpen] = React.useState<boolean>(false);
     const [isAccountDeletionPopupOpen, setIsAccountDeletionPopupOpen] = React.useState<boolean>(false);
+    const [isAccountInfoChangePopupOpen, setIsAccountInfoChangePopupOpen] = React.useState<boolean>(false);
     const [isAccountCreationPopupOpen, setIsAccountCreationPopupOpen] = React.useState<boolean>(false);
     const [showSignInSuccessPopup, setShowSignInSuccessPopup] = React.useState<boolean>(false);
     const [showSignOutSuccessPopup, setShowSignOutSuccessPopup] = React.useState<boolean>(false);
     const [accountCreationError, setAccountCreationError] = React.useState<string | null>(null);
     const [accountSignInError, setAccountSignInError] = React.useState<string | null>(null);
     const [accountDeletionError, setAccountDeletionError] = React.useState<string | null>(null);
+    const [accountInfoChangeError, setAccountInfoChangeError] = React.useState<string | null>(null);
 
     const [isLoggedIn, setIsLoggedIn] = React.useState<boolean>(false);
     const [email, setEmail] = React.useState<string>('');
@@ -45,6 +47,11 @@ function Account(): React.JSX.Element {
     const [isLoading, setIsLoading] = React.useState<boolean>(false);
 
     const currentOptions = isLoggedIn ? accountOptions : accountLoginOptions;
+
+    const [homeRegion, setHomeRegion] = React.useState<string>('');
+    const [homeRegions, setHomeRegions] = React.useState<string[]>([]);
+    const [regionSearch, setRegionSearch] = React.useState<string>('');
+    const [isRegionOpen, setIsRegionOpen] = React.useState<boolean>(false);
 
     // Detect changes in the authentication state and update the login status accordingly
     useEffect(() => {
@@ -60,6 +67,16 @@ function Account(): React.JSX.Element {
         return () => data.subscription.unsubscribe();
     }, []);
 
+    // Pull home regions when popup opens
+    useEffect(() => {
+        if (!isAccountCreationPopupOpen) return;
+        supabase.rpc('get_home_regions').then(({ data }) => {
+            if (data) {
+                setHomeRegions(data);
+            }
+        });
+    }, [isAccountCreationPopupOpen]);
+
     const resetForm = (): void => {
         setEmail('');
         setUsername('');
@@ -67,6 +84,8 @@ function Account(): React.JSX.Element {
         setConfirmPassword('');
         setAccountSignInError(null);
         setAccountCreationError(null);
+        setHomeRegion('');
+        setRegionSearch('');
     };
 
     const handleInputSelection = (): void => {
@@ -152,7 +171,7 @@ function Account(): React.JSX.Element {
     };
 
     const handleAccountCreation = async (): Promise<void> => {
-        if(!email || !username || !password || !confirmPassword) {
+        if(!email || !username || !password || !confirmPassword || !homeRegion) {
             setAccountCreationError('Please fill in all fields.');
             return;
         }
@@ -207,6 +226,7 @@ function Account(): React.JSX.Element {
             const { error: insertError } = await supabase.from('UserData').insert({
                 id: data.user.id,
                 user_name: username,
+                home_region: homeRegion,
             });
             if (insertError?.code === '23505') {
                 setIsLoading(false);
@@ -337,6 +357,46 @@ function Account(): React.JSX.Element {
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                         />
+                        <div className="region-dropdown">
+                            <input
+                                type="text"
+                                placeholder="Home Region"
+                                value={isRegionOpen ? regionSearch : homeRegion}
+                                onFocus={() => {
+                                    setRegionSearch('');
+                                    setIsRegionOpen(true);
+                                }}
+                                onChange={(e) => setRegionSearch(e.target.value)}
+                                onBlur={() => {
+                                    setIsRegionOpen(false);
+                                }}
+                            />
+                            {isRegionOpen && (
+                                <div className="region-dropdown-list">
+                                    {homeRegions
+                                        .filter((region) =>
+                                            region.toLowerCase().includes(regionSearch.toLowerCase())
+                                        )
+                                        .map((region) => (
+                                            <div
+                                                key={region}
+                                                className="region-dropdown-option"
+                                                onMouseDown={() => {
+                                                    setHomeRegion(region);
+                                                    setIsRegionOpen(false);
+                                                }}
+                                            >
+                                                {region}
+                                            </div>
+                                    ))}
+                                    {homeRegions.filter((region) =>
+                                        region.toLowerCase().includes(regionSearch.toLowerCase())
+                                    ).length === 0 && (
+                                        <div className="region-dropdown-empty">No matches</div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                         {accountCreationError && (
                             <p className="error-message">{accountCreationError}</p>
                         )}
@@ -372,6 +432,9 @@ function Account(): React.JSX.Element {
                 <div className="settings-overlay">
                     <div className="settings-popup">
                         <button className="close-button" onClick={() => setIsAccountSettingsPopupOpen(false)}>Close</button>
+                        <button className="account-info-change-button" onClick={() => { setAccountInfoChangeError(null); setIsAccountInfoChangePopupOpen(true); }}>
+                            Change Account Info
+                        </button>
                         <button className="delete-account-button" onClick={() => { setAccountDeletionError(null); setIsAccountDeletionPopupOpen(true); }}>
                             Delete Account
                         </button>
