@@ -457,6 +457,7 @@
     width: 350px;
     padding: 25px;
     background-color: white;
+    color: black;
     border-radius: 10px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     z-index: 10;
@@ -466,6 +467,7 @@
     cursor: pointer;
     position: relative;
     top: 10px;
+    left: 20px;
     color: black;
     background-color: #f1f0f0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
@@ -501,6 +503,58 @@
     cursor: pointer;
     position: relative;
     top: 10px;
+    color: black;
+    background-color: #f1f0f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    height: 25px;
+    width: 60px;
+}
+
+.account-info-change-button {
+    cursor: pointer;
+    position: relative;
+    top: 10px;
+    left: 5px;
+    color: black;
+    background-color: #f1f0f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    height: 50px;
+    width: 100px;
+}
+
+.region-dropdown {
+    position: relative;
+}
+
+.region-dropdown-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 180px;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid #cccccc;
+    z-index: 10;
+}
+
+.region-dropdown-option {
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.region-dropdown-option:hover {
+    background: #cccccc;
+}
+
+.region-dropdown-empty {
+    padding: 6px 10px;
+    color: #8a8a8a;
+}
+
+.confirm-change-button {
+    cursor: pointer;
+    position: relative;
     color: black;
     background-color: #f1f0f0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
