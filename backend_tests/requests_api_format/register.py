@@ -1,9 +1,5 @@
 import requests
 
-register_email = 'test2@lorem.ipsum'
-register_pass = 'notapassword'
-
-
 def test_register(register_email, register_pass):
     print("Testing registration: user: " +  register_email + ", password: " + register_pass);
     headers = {
@@ -28,15 +24,22 @@ def test_register(register_email, register_pass):
 
 
 def main():
+    
+    register_email = 'test2@lorem.ipsum'
+    register_pass = 'notapassword'
+    
+    print("Registration Demo: Following will demo Acceptance Criteria 2-3 of User Story #44:");
+    print("Note: will fail if 'test2@lorem.ipsum' user is not deleted beforehand!");
 
-    print("\nRegistering a valid user:");
-    test_register('test2@lorem.ipsum', 'notapassword')
+
+    print("\nRegistering a valid user:\n");
+    test_register(register_email, register_pass)
     
-    print("\nRegistering the same user; should be invalid now:");
-    test_register('test2@lorem.ipsum', 'notapassword')
+    print("\nRegistering the same user; should be invalid now:\n");
+    test_register(register_email, register_pass)
     
-    print("\nRegistering a user with an invalid email address");
-    test_register('test2', 'notapassword')
+    print("\nRegistering a user with an invalid email address:\n");
+    test_register('test2', register_pass)
     
 
 

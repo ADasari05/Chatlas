@@ -3,12 +3,29 @@ import response_utils
 
 from response_utils import get_auth_response
 
+def test_login(email, password):
+    print("Testing authentication: user: " + email + ", password: " + password);
+    response = get_auth_response(email, password)
 
-response = get_auth_response('test@lorem.ipsum', 'notapassword')
+    if response.status_code == 200:
+        
+        print("Successful login")
+        print("Access Token: " + response.json()["access_token"])
+    else:
+        print("Invalid login: " + str(response.json()))
+        
 
-if response.status_code == 200:
+def main():
+    register_email = 'test2@lorem.ipsum'
+    register_pass = 'notapassword'
     
-    print("Successful login")
-    print("Access Token: " + response.json()["access_token"])
-else:
-    print("Invalid login")
+    print("Login Demo: Following will demo Acceptance Criteria 2-3 of User Story #45:");
+    
+    print("\nLogging in with valid credentials:\n");
+    test_login(register_email, register_pass)
+    
+    print("\nLogging in with invalid credentials:\n");
+    test_login(register_email, '123456')
+
+
+main();

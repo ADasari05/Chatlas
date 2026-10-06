@@ -1,6 +1,8 @@
 import requests
 
-database_url = 'https://hcmllrukdtjygcpliwsy.supabase.co/auth/v1/token'
+database_url = 'https://hcmllrukdtjygcpliwsy.supabase.co'
+database_auth = database_url + '/auth/v1/token'
+database_rest = database_url + '/rest/v1/'
 api_key = 'sb_publishable_0pYEbRm9pvcbK0x2HegtTw_kdSml4jn'
 
 
@@ -16,8 +18,8 @@ def get_auth_response(email, password):
     }
 
     json_data = {
-        'email': 'test@lorem.ipsum',
-        'password': 'notapassword',
+        'email': email,
+        'password': password,
     }
 
     # ex .json() output:
@@ -25,4 +27,40 @@ def get_auth_response(email, password):
 
     # r.status_code = 200, 400, 403, etc
 
-    return requests.post(database_url, params=params, headers=headers, json=json_data)
+    return requests.post(database_auth, params=params, headers=headers, json=json_data)
+ 
+ 
+# typical "GET" response and stuff
+def get_response(table_with_sql, access_token):
+    
+    if access_token == None:
+        headers = {
+            'apikey': api_key
+        }
+    else:
+        headers = {
+            'apikey': api_key,
+            'Authorization': 'Bearer ' + access_token,
+        }
+
+    return requests.get(database_rest + table_with_sql, headers=headers)
+    
+# typical "POST" response and stuff -- TODO
+def post_response(table_with_sql, access_token):
+    
+    if access_token == None:
+        headers = {
+            'apikey': api_key,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+        }
+    else:
+        headers = {
+            'apikey': api_key,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+            'Authorization': 'Bearer ' + access_token,
+        }
+
+    return requests.get(database_rest + table_with_sql, headers=headers)
+    
