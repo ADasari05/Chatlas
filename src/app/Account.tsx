@@ -30,14 +30,12 @@ function Account(): React.JSX.Element {
     const [isLoginPopupOpen, setIsLoginPopupOpen] = React.useState<boolean>(false);
     const [isAccountSettingsPopupOpen, setIsAccountSettingsPopupOpen] = React.useState<boolean>(false);
     const [isAccountDeletionPopupOpen, setIsAccountDeletionPopupOpen] = React.useState<boolean>(false);
-    const [isAccountInfoChangePopupOpen, setIsAccountInfoChangePopupOpen] = React.useState<boolean>(false);
     const [isAccountCreationPopupOpen, setIsAccountCreationPopupOpen] = React.useState<boolean>(false);
     const [showSignInSuccessPopup, setShowSignInSuccessPopup] = React.useState<boolean>(false);
     const [showSignOutSuccessPopup, setShowSignOutSuccessPopup] = React.useState<boolean>(false);
     const [accountCreationError, setAccountCreationError] = React.useState<string | null>(null);
     const [accountSignInError, setAccountSignInError] = React.useState<string | null>(null);
     const [accountDeletionError, setAccountDeletionError] = React.useState<string | null>(null);
-    const [accountInfoChangeError, setAccountInfoChangeError] = React.useState<string | null>(null);
 
     const [isLoggedIn, setIsLoggedIn] = React.useState<boolean>(false);
     const [email, setEmail] = React.useState<string>('');
@@ -48,10 +46,25 @@ function Account(): React.JSX.Element {
 
     const currentOptions = isLoggedIn ? accountOptions : accountLoginOptions;
 
+    // Region states for account creation
     const [homeRegion, setHomeRegion] = React.useState<string>('');
     const [homeRegions, setHomeRegions] = React.useState<string[]>([]);
     const [regionSearch, setRegionSearch] = React.useState<string>('');
     const [isRegionOpen, setIsRegionOpen] = React.useState<boolean>(false);
+
+    // States for account info change
+    const [currentUsername, setCurrentUsername] = React.useState<string>('');
+    const [currentRegion, setCurrentRegion] = React.useState<string>('');
+    const [newUsername, setNewUsername] = React.useState<string>('');
+    const [newRegion, setNewRegion] = React.useState<string>('');
+    const [newRegionSearch, setNewRegionSearch] = React.useState<string>('');
+    const [isNewRegionOpen, setIsNewRegionOpen] = React.useState<boolean>(false);
+    const [usernameChangeError, setUsernameChangeError] = React.useState<string | null>(null);
+    const [regionChangeError, setRegionChangeError] = React.useState<string | null>(null);
+    const [isUsernameChangeLoading, setIsUsernameChangeLoading] = React.useState<boolean>(false);
+    const [isRegionChangeLoading, setIsRegionChangeLoading] = React.useState<boolean>(false);
+
+    const [isAccountInfoChangePopupOpen, setIsAccountInfoChangePopupOpen] = React.useState<boolean>(false);
 
     // Detect changes in the authentication state and update the login status accordingly
     useEffect(() => {
@@ -69,13 +82,37 @@ function Account(): React.JSX.Element {
 
     // Pull home regions when popup opens
     useEffect(() => {
-        if (!isAccountCreationPopupOpen) return;
+        if (!isAccountCreationPopupOpen) {
+            return;
+        }
         supabase.rpc('get_home_regions').then(({ data }) => {
             if (data) {
                 setHomeRegions(data);
             }
         });
     }, [isAccountCreationPopupOpen]);
+
+    // Pull current user info when page opens
+    useEffect(() => {
+        if (!isAccountInfoChangePopupOpen) {
+            return;
+        }
+
+        supabase.rpc('get_account_info').maybeSingle().then(({ data }) => {
+            if (data) {
+                setCurrentUsername(data.user_name ?? '');
+                setCurrentRegion(data.home_region ?? '');
+            }
+        });
+
+        if (homeRegions.length === 0) {
+            supabase.rpc('get_home_regions').then(({ data }) => {
+                if (data) {
+                    setHomeRegions(data);
+                }
+            });
+        }
+    }, [isAccountInfoChangePopupOpen]);
 
     const resetForm = (): void => {
         setEmail('');
@@ -268,6 +305,87 @@ function Account(): React.JSX.Element {
         await handleSignOut();
     };
 
+    const handleUsernameChange = async (): Promise<void> => {
+        setUsernameChangeError(null);
+        if (!newUsername) {
+            setUsernameChangeError('Please enter a username.');
+            return;
+        }
+        if (newUsername === currentUsername) {
+            setUsernameChangeError('Same as old username. Please enter a new username.');
+            return;
+        }
+
+        setIsUsernameChangeLoading(true);
+        try {
+            const { data: isTaken, error: checkError } = await supabase.rpc('is_display_name_taken', {
+                check_name: newUsername,
+            });
+
+            if (checkError) {
+                setUsernameChangeError('Could not verify username. Please try again.');
+                return;
+            }
+
+            if (isTaken) {
+                setUsernameChangeError('This username is already taken.');
+                return;
+            }
+
+            const { error: authError } = await supabase.auth.updateUser({ data: { display_name: newUsername } });
+            if (authError) {
+                setUsernameChangeError(authError.message);
+                return;
+            }
+
+            const { error: rpcError } = await supabase.rpc('update_username', { new_name: newUsername });
+            if (rpcError) {
+                setUsernameChangeError('Could not update username. Please try again.');
+                return;
+            }
+
+            setCurrentUsername(newUsername);
+            setNewUsername('');
+        } finally {
+            setIsUsernameChangeLoading(false);
+        }
+    };
+
+    const handleRegionChange = async (): Promise<void> => {
+        setRegionChangeError(null);
+        if (!newRegion) {
+            setRegionChangeError('Please choose a region.');
+            return;
+        }
+        if (newRegion === currentRegion) {
+            setRegionChangeError('Same as old region. Please enter a new region.');
+            return;
+        }
+
+        setIsRegionChangeLoading(true);
+        try {
+            const { error } = await supabase.rpc('update_region', { new_region: newRegion });
+            if (error) {
+                setRegionChangeError('Could not update region. Please try again.');
+                return;
+            }
+
+            setCurrentRegion(newRegion);
+            setNewRegion('');
+        } finally {
+            setIsRegionChangeLoading(false);
+        }
+    };
+
+    const handleCloseInfoChange = (): void => {
+        setNewUsername('');
+        setNewRegion('');
+        setNewRegionSearch('');
+        setUsernameChangeError(null);
+        setRegionChangeError(null);
+        setIsAccountInfoChangePopupOpen(false);
+    }
+
     return (
         <div className="account-icon"
             onMouseEnter={() => setIsMenuOpen(true)}
@@ -432,7 +550,7 @@ function Account(): React.JSX.Element {
                 <div className="settings-overlay">
                     <div className="settings-popup">
                         <button className="close-button" onClick={() => setIsAccountSettingsPopupOpen(false)}>Close</button>
-                        <button className="account-info-change-button" onClick={() => { setAccountInfoChangeError(null); setIsAccountInfoChangePopupOpen(true); }}>
+                        <button className="account-info-change-button" onClick={() => { setIsAccountInfoChangePopupOpen(true); }}>
                             Change Account Info
                         </button>
                         <button className="delete-account-button" onClick={() => { setAccountDeletionError(null); setIsAccountDeletionPopupOpen(true); }}>
@@ -453,6 +571,66 @@ function Account(): React.JSX.Element {
                 </div>
             )
             }
+            {isAccountInfoChangePopupOpen && (
+                <div className="sign-in-overlay">
+                    <div className="sign-in-popup">
+                        <button className="close-button" onClick={handleCloseInfoChange}>
+                            Close
+                        </button>
+
+                        <p>Current Username: {currentUsername}</p>
+                        <input
+                            type="text"
+                            placeholder="New username"
+                            value={newUsername}
+                            onChange={(e) => setNewUsername(e.target.value)}
+                        />
+                        {usernameChangeError && <p className="error-message">{usernameChangeError}</p>}
+                        <button onClick={handleUsernameChange} disabled={isUsernameChangeLoading} className="confirm-change-button">
+                            Confirm
+                        </button>
+
+                        <p>Current Home Region: {currentRegion}</p>
+                        <div className="region-dropdown">
+                            <input
+                                type="text"
+                                placeholder="New home region"
+                                value={isNewRegionOpen ? newRegionSearch : newRegion}
+                                onFocus={() => {
+                                    setNewRegionSearch('');
+                                    setIsNewRegionOpen(true);
+                                }}
+                                onChange={(e) => setNewRegionSearch(e.target.value)}
+                                onBlur={() => {
+                                    setIsNewRegionOpen(false);
+                                }}
+                            />
+                            {isNewRegionOpen && (
+                                <div className="region-dropdown-list">
+                                    {homeRegions
+                                        .filter((region) => region.toLowerCase().includes(newRegionSearch.toLowerCase()))
+                                        .map((region) => (
+                                            <div
+                                                key={region}
+                                                className="region-dropdown-option"
+                                                onMouseDown={() => {
+                                                    setNewRegion(region);
+                                                    setIsNewRegionOpen(false);
+                                                }}
+                                            >
+                                                {region}
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
+                        </div>
+                        {regionChangeError && <p className="error-message">{regionChangeError}</p>}
+                        <button onClick={handleRegionChange} disabled={isRegionChangeLoading} className="confirm-change-button">
+                            Confirm
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
