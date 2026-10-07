@@ -139,6 +139,6 @@ def call_sql_function(function_name, access_token, json_data):
             'Authorization': 'Bearer ' + access_token,
         }
     
-    print("target:" + database_rpc + function_name);
+    #print("target:" + database_rpc + function_name);
     return requests.post(database_rpc + function_name, headers=headers, json=json_data)
     
