@@ -232,51 +232,55 @@
   }
 
   // Sign In
+  const formSignin = document.getElementById('form-signin');
   const btnSignin = document.getElementById('btn-signin');
-  if (btnSignin) {
-    btnSignin.addEventListener('click', async () => {
-      if (!supabaseClient) return log('Error', 'Client not initialized', true);
-      const identifier = document.getElementById('signin-email').value.trim();
-      const password = document.getElementById('signin-password').value;
 
-      if (!identifier || !password) {
-        log('Sign In Validation Failed', 'Please provide email/username and password.', true);
+  async function executeSignIn(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!supabaseClient) return log('Error', 'Client not initialized', true);
+    const identifier = document.getElementById('signin-email').value.trim();
+    const password = document.getElementById('signin-password').value;
+
+    if (!identifier || !password) {
+      log('Sign In Validation Failed', 'Please provide email/username and password.', true);
+      return;
+    }
+
+    let loginEmail = identifier;
+    log('Executing Sign In', { identifier });
+
+    try {
+      // If user entered a username (no '@'), resolve to email via RPC
+      if (!loginEmail.includes('@')) {
+        const { data: resolvedEmail, error: resolveErr } = await supabaseClient.rpc('get_email_for_username', {
+          check_username: loginEmail
+        });
+        if (resolveErr || !resolvedEmail) {
+          log('Sign In Rejected', 'Invalid login credentials or username not found.', true);
+          return;
+        }
+        loginEmail = resolvedEmail;
+      }
+
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email: loginEmail, password });
+      if (error) throw error;
+
+      // Check if account is disabled/pending deletion
+      const { data: emailStatus } = await supabaseClient.rpc('get_email_status', { check_email: loginEmail }).maybeSingle();
+      if (emailStatus && emailStatus.disabled) {
+        await supabaseClient.auth.signOut();
+        log('Sign In Blocked', 'This account is pending deletion and cannot be signed in to.', true);
         return;
       }
 
-      let loginEmail = identifier;
-      log('Executing Sign In', { identifier });
-
-      try {
-        // If user entered a username (no '@'), resolve to email via RPC
-        if (!loginEmail.includes('@')) {
-          const { data: resolvedEmail, error: resolveErr } = await supabaseClient.rpc('get_email_for_username', {
-            check_username: loginEmail
-          });
-          if (resolveErr || !resolvedEmail) {
-            log('Sign In Rejected', 'Invalid login credentials or username not found.', true);
-            return;
-          }
-          loginEmail = resolvedEmail;
-        }
-
-        const { data, error } = await supabaseClient.auth.signInWithPassword({ email: loginEmail, password });
-        if (error) throw error;
-
-        // Check if account is disabled/pending deletion
-        const { data: emailStatus } = await supabaseClient.rpc('get_email_status', { check_email: loginEmail }).maybeSingle();
-        if (emailStatus && emailStatus.disabled) {
-          await supabaseClient.auth.signOut();
-          log('Sign In Blocked', 'This account is pending deletion and cannot be signed in to.', true);
-          return;
-        }
-
-        log('Sign In Success', { user: data.user.email, sessionToken: data.session.access_token.substring(0, 20) + '...' });
-      } catch (err) {
-        log('Sign In Error', err.message || err, true);
-      }
-    });
+      log('Sign In Success', { user: data.user.email, sessionToken: data.session.access_token.substring(0, 20) + '...' });
+    } catch (err) {
+      log('Sign In Error', err.message || err, true);
+    }
   }
+
+  if (formSignin) formSignin.addEventListener('submit', executeSignIn);
+  if (btnSignin) btnSignin.addEventListener('click', executeSignIn);
 
   // Sign Out
   if (btnSignOut) {

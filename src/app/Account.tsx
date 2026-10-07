@@ -446,37 +446,56 @@ function Account(): React.JSX.Element {
             )}
             {isLoginPopupOpen && (
                 <div className="sign-in-overlay">
-                    <div className="sign-in-popup">
+                    <form
+                        className="sign-in-popup"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            handleSignIn();
+                        }}
+                    >
                         <h2>Sign In</h2>
                         <input
                             type="text"
                             placeholder="Email or Username"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSignIn();
+                                }
+                            }}
                         />
                         <input
                             type="password"
                             placeholder="Password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSignIn();
+                                }
+                            }}
                         />
                         {accountSignInError && (
                             <p className="error-message">{accountSignInError}</p>
                         )}
                         <button
+                            type="submit"
                             className="sign-in-button"
-                            onClick={handleSignIn}
                             disabled={isLoading}
                         >
                             Confirm
                         </button>
                         <button
+                            type="button"
                             className="close-button"
                             onClick={() => { resetForm(); setIsLoginPopupOpen(false); }}
                         >
                             Cancel
                         </button>
-                    </div>
+                    </form>
                 </div>
             )}
             {isAccountCreationPopupOpen && (
