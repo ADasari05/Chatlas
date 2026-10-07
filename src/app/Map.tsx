@@ -2,9 +2,14 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
+import type { MapMouseEvent } from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import MapStyleMenu, { MapStyleOption } from './MapStyleMenu';
 import { loginStatus } from './Account';
+import { createClient } from '@/utils/supabase/client';
+import { openWaypointChat } from './WaypointChat';
+
+const supabase = createClient();
 
 const MAP_STYLES: MapStyleOption[] = [
     { id: 'streets', label: 'Streets', url: 'mapbox://styles/mapbox/streets-v12' },
@@ -49,16 +54,36 @@ const CLICKED_CITY_DATA = 'clicked-city-data';
 const CLICKED_CITY_DOT = 'clicked-city-dot';
 const CLICK_COLOR = '#b21c1c';
 
-const waypointMarkers: mapboxgl.Marker[] = [];
-
-export function handleMapLogin(): void {
-    // TODO: Add in user waypoints from server
+interface WaypointEntry {
+    id: number;
+    marker: mapboxgl.Marker;
 }
 
-// Handle map logout by removing all waypoints
-export function handleMapLogout(): void {
-    removeAllWaypoints();
+interface OtherWaypointEntry extends WaypointEntry {
+    ownerUserId: string;
 }
+
+const ownWaypoints: WaypointEntry[] = [];
+const otherWaypoints: OtherWaypointEntry[] = [];
+
+function createWaypointMarker(
+    lng: number,
+    lat: number,
+    color: string
+): mapboxgl.Marker {
+    return new mapboxgl.Marker({ color })
+        .setLngLat([lng, lat]);
+}
+
+const OWN_WAYPOINT_COLOR = '#2b75f4';
+const OTHER_WAYPOINT_COLOR = '#e87d2c';
+
+let nextTempWaypointId = -1;
+
+let currentMap: mapboxgl.Map | null = null;
+let waypointsVisible = true;
+let onOwnWaypointClick: ((id: number) => void) | null = null;
+let onOtherWaypointClick: ((waypointId: number, ownerUserId: string) => void) | null = null;
 
 function setStreetLayersVisible(map: mapboxgl.Map, visible: boolean): void {
     for (const layer of map.getStyle()?.layers ?? []) {
@@ -68,22 +93,96 @@ function setStreetLayersVisible(map: mapboxgl.Map, visible: boolean): void {
     }
 }
 
-function setWaypointsVisible(map: mapboxgl.Map, visible: boolean): void {
-    for (const marker of waypointMarkers) {
+async function loadWaypoints(map: mapboxgl.Map, visible: boolean): Promise<void> {
+    for (const wp of [...ownWaypoints, ...otherWaypoints]) {
+        wp.marker.remove();
+    }
+    ownWaypoints.length = 0;
+    otherWaypoints.length = 0;
+ 
+    const [{ data: mine, error: mineError }, { data: others, error: othersError }] = await Promise.all([
+        supabase.rpc('get_my_waypoints'),
+        supabase.rpc('get_other_waypoints'),
+    ]);
+ 
+    if (mineError || othersError) {
+        console.error('Could not load waypoints', mineError, othersError);
+        return;
+    }
+ 
+    for (const wp of mine ?? []) {
+        const marker = createWaypointMarker(wp.longitude, wp.latitude, OWN_WAYPOINT_COLOR);
         if (visible) {
             marker.addTo(map);
+        }
+        marker.getElement().addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            onOwnWaypointClick?.(wp.id);
+        });
+        ownWaypoints.push({ id: wp.id, marker });
+    }
+ 
+    for (const wp of others ?? []) {
+        const marker = createWaypointMarker(wp.longitude, wp.latitude, OTHER_WAYPOINT_COLOR);
+        if (visible) {
+            marker.addTo(map);
+        }
+        marker.getElement().addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            onOtherWaypointClick?.(wp.id, wp.owner_user_id);
+        });
+        otherWaypoints.push({ id: wp.id, marker, ownerUserId: wp.owner_user_id });
+    }
+}
+ 
+function setWaypointsVisible(map: mapboxgl.Map, visible: boolean): void {
+    for (const wp of [...ownWaypoints, ...otherWaypoints]) {
+        if (visible) {
+            wp.marker.addTo(map);
         } else {
-            marker.remove();
+            wp.marker.remove();
         }
     }
 }
-
+ 
 function removeAllWaypoints(): void {
-    for (const marker of waypointMarkers) {
-        marker.remove();
+    for (const wp of [...ownWaypoints, ...otherWaypoints]) {
+        wp.marker.remove();
     }
-    waypointMarkers.length = 0;
+    ownWaypoints.length = 0;
+    otherWaypoints.length = 0;
 }
+
+export async function handleMapLogin(): Promise<void> {
+    if (currentMap) {
+        await loadWaypoints(currentMap, waypointsVisible);
+        setWaypointsVisible(currentMap, waypointsVisible);
+        console.log('Map login handled, waypoints loaded');
+    }
+}
+ 
+export function handleMapLogout(): void {
+    removeAllWaypoints();
+}
+
+export async function deleteAllOwnWaypoints(): Promise<void> {
+    for (const entry of ownWaypoints) {
+        const { error } = await supabase.rpc('delete_waypoint', {
+            waypoint_id: entry.id
+        });
+
+        if (error) {
+            console.error('Could not delete waypoint,', error);
+            return;
+        }
+    }
+
+    for (const entry of ownWaypoints) {
+        entry.marker.remove();
+    }
+
+    ownWaypoints.length = 0;
+};
 
 function addHoverEffect(map: mapboxgl.Map): void {
     // Define layers and determine where to place hover effects
@@ -207,9 +306,11 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
     showWaypointsRef.current = showWaypoints;
 
     const [isWaypointConfirmationPopupOpen, setIsWaypointConfirmationPopupOpen] = useState(false);
-    const [isWaypointInteractionPopupOpen, setIsWaypointInteractionPopupOpen] = useState(false);
-
-    const [selectedWaypointIndex, setSelectedWaypointIndex] = useState<number | null>(null);
+    const [isDeleteWaypointPopupOpen, setIsDeleteWaypointPopupOpen] = useState(false);
+    const [selectedOwnWaypointId, setSelectedOwnWaypointId] = useState<number | null>(null);
+    const [isChatWaypointPopupOpen, setIsChatWaypointPopupOpen] = useState(false);
+    const [selectedOtherWaypointOwnerId, setSelectedOtherWaypointOwnerId] = useState<string | null>(null);
+    const [selectedOtherWaypointId, setSelectedOtherWaypointId] = useState<number | null> (null);
 
     useEffect(() => {
         if (!containerRef.current) return;
@@ -225,6 +326,21 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
             zoom: 1.5,
         });
         mapRef.current = map;
+        currentMap = map;
+
+        onOwnWaypointClick = (id) => {
+            setSelectedOwnWaypointId(id);
+            setIsDeleteWaypointPopupOpen(true);
+        };
+        onOtherWaypointClick = (waypointId, ownerUserId) => {
+            setSelectedOtherWaypointId(waypointId);
+            setSelectedOtherWaypointOwnerId(ownerUserId);
+            setIsChatWaypointPopupOpen(true);
+        };
+
+        if (loginStatus) {
+            loadWaypoints(map, showWaypointsRef.current);
+        }
 
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }));
 
@@ -416,35 +532,42 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
         });
 
         map.on('dblclick', (e) => {
-            // TODO: Add server validation for login and waypoint limit
             if(loginStatus == false) {
                 console.log("User not logged in, cannot add waypoint");
                 return;
             }
-            if(waypointMarkers.length >= 5 || !showWaypointsRef.current) {
-                console.log("Waypoint limit reached or waypoints not visible, cannot add waypoint");
+            if (ownWaypoints.length >= 5 || !showWaypointsRef.current) {
+                console.log("Waypoint limit reached or waypoints not visible.");
                 return;
             }
             setIsWaypointConfirmationPopupOpen(true);
-            const marker = new mapboxgl.Marker().setLngLat(e.lngLat);
-
-            if(showWaypointsRef.current) {
+ 
+            const marker = createWaypointMarker(e.lngLat.lng, e.lngLat.lat, OWN_WAYPOINT_COLOR);
+            if (showWaypointsRef.current) {
                 marker.addTo(map);
             }
+ 
+            const id = nextTempWaypointId--;
+
+            const entry: WaypointEntry = {
+                id,
+                marker
+            };
 
             marker.getElement().addEventListener('click', (ev) => {
                 ev.stopPropagation();
-                setIsWaypointInteractionPopupOpen(true);
-                setSelectedWaypointIndex(waypointMarkers.indexOf(marker));
-                console.log('marker clicked');
+                onOwnWaypointClick?.(entry.id);
             });
 
-            waypointMarkers.push(marker);
+            ownWaypoints.push(entry);
         });
 
         // Style switches reset layer visibility, so reapply on every load
         map.on('style.load', () => {
             setStreetLayersVisible(map, showStreetsRef.current);
+            if (loginStatus) {
+                loadWaypoints(map, showWaypointsRef.current);
+            }
             setWaypointsVisible(map, showWaypointsRef.current);
             addHoverEffect(map);
             hoveredCountry = null;
@@ -474,16 +597,14 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
         });
 
         map.once('idle', () => {
-            const targetLngLat = { lng, lat };
-            const targetPoint = map.project([lng, lat]);
+            const targetLngLat = new mapboxgl.LngLat(lng, lat);
+            const targetPoint = map.project(targetLngLat);
 
             map.fire('click', {
                 lngLat: targetLngLat,
                 point: targetPoint,
-                originalEvent: {
-                    detail: 1
-                }
-            });
+                originalEvent: new MouseEvent('click', { detail: 1 }),
+            } as unknown as MapMouseEvent);
         });
     };
 
@@ -516,23 +637,66 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
         }
         const next = !showWaypoints;
         setShowWaypoints(next);
+        waypointsVisible = next;
         if (mapRef.current) {
             setWaypointsVisible(mapRef.current, next);
         }
     };
+ 
+    const removeLastOwnWaypoint = (): void => {
+        const removed = ownWaypoints.pop();
+        removed?.marker.remove();
+    };
 
-    const removeLastWaypoint = (): void => {
-        const lastWaypoint = waypointMarkers.pop();
-        lastWaypoint?.remove();
-    }
+    const deleteSelectedWaypoint = async (): Promise<void> => {
+        if (selectedOwnWaypointId === null) {
+            return;
+        }
+        const index = ownWaypoints.findIndex((wp) => wp.id === selectedOwnWaypointId);
+        if (index === -1) {
+            return;
+        }
+        const entry = ownWaypoints[index];
+ 
+        if (entry.id >= 0) {
+            const { error } = await supabase.rpc('delete_waypoint', { waypoint_id: entry.id });
+            if (error) {
+                console.error('Could not delete waypoint,', error);
+                return;
+            }
+        }
+ 
+        entry.marker.remove();
+        ownWaypoints.splice(index, 1);
+        setSelectedOwnWaypointId(null);
+    };
+ 
+    const openChatWithWaypointOwner = (): void => {
+        if (selectedOtherWaypointId === null) {
+            return;
+        }
+        openWaypointChat(selectedOtherWaypointId);
+    };
 
-    const deleteSelectedWaypoint = (): void => {
-        if (selectedWaypointIndex === null) return;
-        const index = selectedWaypointIndex;
-        const waypoint = waypointMarkers[index];
-        waypointMarkers.splice(index, 1);
-        waypoint.remove();
-        setSelectedWaypointIndex(null);
+    const confirmWaypoint = async (): Promise<void> => {
+        const entry = ownWaypoints[ownWaypoints.length - 1];
+        if (!entry) {
+            return;
+        }
+        const { lng, lat } = entry.marker.getLngLat();
+        const { data, error } = await supabase.rpc('create_waypoint', {
+            waypoint_longitude: lng,
+            waypoint_latitude: lat,
+        });
+ 
+        if (error || data === null) {
+            console.error('Could not save waypoint,', error);
+            entry.marker.remove();
+            ownWaypoints.pop();
+            return;
+        }
+ 
+        entry.id = data;
     };
 
     return (
@@ -553,9 +717,13 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                 <div className="waypoint-overlay">
                 <div className="waypoint-popup">
                     <p>Do you wish to place a waypoint here?</p>
+                    <div className="waypoint-popup-buttons">
                     <button
                         className="waypoint-confirm-button"
-                        onClick={() => setIsWaypointConfirmationPopupOpen(false)}
+                        onClick={() => {
+                            setIsWaypointConfirmationPopupOpen(false);
+                            confirmWaypoint();
+                        }}
                     >
                         Confirm
                     </button>
@@ -563,36 +731,80 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                         className="waypoint-cancel-button"
                         onClick={() => {
                             setIsWaypointConfirmationPopupOpen(false);
-                            removeLastWaypoint();
+                            removeLastOwnWaypoint();
                         }}
                     >
                         Cancel
                     </button>
+                    </div>
                 </div>
                 </div>
                 
             )}
-            {isWaypointInteractionPopupOpen && (
+            {isDeleteWaypointPopupOpen && (
                 <div className="waypoint-overlay">
                 <div className="waypoint-popup">
+                    <p>What would you like to do with this waypoint?</p>
+                    <div className="waypoint-popup-buttons">
                     <button
                         className="waypoint-confirm-button"
                         onClick={() => {
-                            setIsWaypointInteractionPopupOpen(false);
+                            setIsDeleteWaypointPopupOpen(false);
+                            if (selectedOwnWaypointId !== null && selectedOwnWaypointId > 0) {
+                                openWaypointChat(selectedOwnWaypointId);
+                            }
+                        }}
+                    >
+                        Chat
+                    </button>
+                    <button
+                        className="waypoint-confirm-button"
+                        onClick={() => {
+                            setIsDeleteWaypointPopupOpen(false);
                             deleteSelectedWaypoint();
                         }}
                     >
-                        Delete Waypoint
+                        Delete
                     </button>
                     <button
                         className="waypoint-cancel-button"
                         onClick={() => {
-                            setIsWaypointInteractionPopupOpen(false);
-                            setSelectedWaypointIndex(null);
+                            setIsDeleteWaypointPopupOpen(false);
+                            setSelectedOwnWaypointId(null);
                         }}
                     >
                         Cancel
                     </button>
+                    </div>
+                </div>
+                </div>
+                
+            )}
+            {isChatWaypointPopupOpen && (
+                <div className="waypoint-overlay">
+                <div className="waypoint-popup">
+                    <p>{"Chat with this waypoint's host?"}</p>
+                    <div className="waypoint-popup-buttons">
+                    <button
+                        className="waypoint-confirm-button"
+                        onClick={() => {
+                            setIsChatWaypointPopupOpen(false);
+                            openChatWithWaypointOwner();
+                        }}
+                    >
+                        Chat
+                    </button>
+                    <button
+                        className="waypoint-cancel-button"
+                        onClick={() => {
+                            setIsChatWaypointPopupOpen(false);
+                            setSelectedOtherWaypointOwnerId(null);
+                            setSelectedOtherWaypointId(null);
+                        }}
+                    >
+                        Cancel
+                    </button>
+                    </div>
                 </div>
                 </div>
                 
