@@ -561,3 +561,10 @@
     height: 25px;
     width: 60px;
 }
+
+.waypoint-marker {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid white;
+}
