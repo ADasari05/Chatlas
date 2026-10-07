@@ -1,10 +1,20 @@
 import React, { useEffect } from 'react';
-import { handleMapLogout } from './Map';
+import { deleteAllOwnWaypoints, handleMapLogin, handleMapLogout } from './Map';
 import { createClient } from '@/utils/supabase/client';
 
 interface AccountOption {
     id: string;
     label: string;
+}
+
+interface AccountInfo {
+    user_name?: string;
+    home_region?: string;
+}
+
+interface EmailStatus {
+    exists_already?: boolean;
+    disabled?: boolean;
 }
 
 export let loginStatus = false;
@@ -46,6 +56,26 @@ function Account(): React.JSX.Element {
 
     const currentOptions = isLoggedIn ? accountOptions : accountLoginOptions;
 
+    // Region states for account creation
+    const [homeRegion, setHomeRegion] = React.useState<string>('');
+    const [homeRegions, setHomeRegions] = React.useState<string[]>([]);
+    const [regionSearch, setRegionSearch] = React.useState<string>('');
+    const [isRegionOpen, setIsRegionOpen] = React.useState<boolean>(false);
+
+    // States for account info change
+    const [currentUsername, setCurrentUsername] = React.useState<string>('');
+    const [currentRegion, setCurrentRegion] = React.useState<string>('');
+    const [newUsername, setNewUsername] = React.useState<string>('');
+    const [newRegion, setNewRegion] = React.useState<string>('');
+    const [newRegionSearch, setNewRegionSearch] = React.useState<string>('');
+    const [isNewRegionOpen, setIsNewRegionOpen] = React.useState<boolean>(false);
+    const [usernameChangeError, setUsernameChangeError] = React.useState<string | null>(null);
+    const [regionChangeError, setRegionChangeError] = React.useState<string | null>(null);
+    const [isUsernameChangeLoading, setIsUsernameChangeLoading] = React.useState<boolean>(false);
+    const [isRegionChangeLoading, setIsRegionChangeLoading] = React.useState<boolean>(false);
+
+    const [isAccountInfoChangePopupOpen, setIsAccountInfoChangePopupOpen] = React.useState<boolean>(false);
+
     // Detect changes in the authentication state and update the login status accordingly
     useEffect(() => {
         const { data } = supabase.auth.onAuthStateChange((event, session) => {
@@ -60,6 +90,41 @@ function Account(): React.JSX.Element {
         return () => data.subscription.unsubscribe();
     }, []);
 
+    // Pull home regions when popup opens
+    useEffect(() => {
+        if (!isAccountCreationPopupOpen) {
+            return;
+        }
+        supabase.rpc('get_home_regions').then(({ data }) => {
+            if (data) {
+                setHomeRegions(data);
+            }
+        });
+    }, [isAccountCreationPopupOpen]);
+
+    // Pull current user info when page opens
+    useEffect(() => {
+        if (!isAccountInfoChangePopupOpen) {
+            return;
+        }
+
+        supabase.rpc('get_account_info').maybeSingle().then(({ data }) => {
+            const info = data as AccountInfo | null;
+            if (info) {
+                setCurrentUsername(info.user_name ?? '');
+                setCurrentRegion(info.home_region ?? '');
+            }
+        });
+
+        if (homeRegions.length === 0) {
+            supabase.rpc('get_home_regions').then(({ data }) => {
+                if (data) {
+                    setHomeRegions(data);
+                }
+            });
+        }
+    }, [isAccountInfoChangePopupOpen]);
+
     const resetForm = (): void => {
         setEmail('');
         setUsername('');
@@ -67,6 +132,8 @@ function Account(): React.JSX.Element {
         setConfirmPassword('');
         setAccountSignInError(null);
         setAccountCreationError(null);
+        setHomeRegion('');
+        setRegionSearch('');
     };
 
     const handleInputSelection = (): void => {
@@ -125,21 +192,56 @@ function Account(): React.JSX.Element {
             return;
         }
         setIsLoading(true);
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        setIsLoading(false);
-        if (error) {
-            setAccountSignInError(error.message);
-            return;
+        try {
+            let loginEmail = email.trim();
+
+            // If user entered a username (does not contain '@'), resolve to email via RPC
+            if (!loginEmail.includes('@')) {
+                const { data: resolvedEmail, error: resolveError } = await supabase.rpc('get_email_for_username', {
+                    check_username: loginEmail,
+                });
+
+                if (resolveError || !resolvedEmail) {
+                    setAccountSignInError('Invalid login credentials.');
+                    return;
+                }
+                loginEmail = resolvedEmail;
+            }
+
+            const [signInResult, statusResult] = await Promise.all([
+                supabase.auth.signInWithPassword({ email: loginEmail, password }),
+                supabase.rpc('get_email_status', { check_email: loginEmail }).maybeSingle(),
+            ]);
+
+            if (signInResult.error) {
+                setAccountSignInError(signInResult.error.message);
+                return;
+            }
+
+            const userEmailStatus = statusResult.data as EmailStatus | null;
+            if (userEmailStatus?.disabled) {
+                await supabase.auth.signOut();
+                setAccountSignInError('This account is pending deletion and cannot be signed in to.');
+                return;
+            }
+
+            resetForm();
+            setLoginStatus(true);
+            setIsLoginPopupOpen(false);
+            openSignInSuccessPopup();
+            handleMapLogin();
+        } finally {
+            setIsLoading(false);
         }
-        resetForm();
-        setLoginStatus(true);
-        setIsLoginPopupOpen(false);
-        openSignInSuccessPopup();
     };
 
     const handleAccountCreation = async (): Promise<void> => {
-        if(!email || !username || !password || !confirmPassword) {
+        if(!email || !username || !password || !confirmPassword || !homeRegion) {
             setAccountCreationError('Please fill in all fields.');
+            return;
+        }
+        if (password.length < 6) {
+            setAccountCreationError('Password must be at least 6 characters.');
             return;
         }
         if (password !== confirmPassword) {
@@ -147,15 +249,27 @@ function Account(): React.JSX.Element {
             return;
         }
  
-        const { data: isTaken, error: UsernameError } = await supabase.rpc('is_display_name_taken', {
-            check_name: username,
-        });
+       const [usernameTaken, emailStatus] = await Promise.all([
+            supabase.rpc('is_display_name_taken', { check_name: username }),
+            supabase.rpc('get_email_status', { check_email: email }).maybeSingle(),
+        ]);
 
-        if (UsernameError) {
-            setAccountCreationError('Could not verify username. Please try again.');
+        if (usernameTaken.error || emailStatus.error) {
+            setAccountCreationError('Could not verify account details. Please try again.');
             return;
         }
-        if (isTaken) {
+    
+        const emailStatusData = emailStatus.data as EmailStatus | null;
+        if (emailStatusData?.exists_already) {
+            setAccountCreationError(
+                emailStatusData.disabled
+                    ? 'This email belongs to an account pending deletion. Please use a different email.'
+                    : 'This email is already registered.'
+            );
+            return;
+        }
+
+        if (usernameTaken.data) {
             setAccountCreationError('This username is already taken.');
             return;
         }
@@ -180,8 +294,10 @@ function Account(): React.JSX.Element {
 
         if (data.user) {
             const { error: insertError } = await supabase.from('UserData').insert({
-                user_id: data.user.id,
+                id: data.user.id,
+                user_auth_id: data.user.id,
                 user_name: username,
+                home_region: homeRegion,
             });
             if (insertError?.code === '23505') {
                 setIsLoading(false);
@@ -197,6 +313,7 @@ function Account(): React.JSX.Element {
             resetForm();
             setIsAccountCreationPopupOpen(false);
             openSignInSuccessPopup();
+            handleMapLogin();
         }
     };
 
@@ -210,9 +327,100 @@ function Account(): React.JSX.Element {
     };
 
     const handleAccountDeletion = async (): Promise<void> => {
-        await handleSignOut();
+        setIsLoading(true);
+        const { error } = await supabase.rpc('request_account_deletion');
+        setIsLoading(false);
+
+        if (error) {
+            setAccountDeletionError('Could not process deletion request. Please try again.');
+            return;
+        }
+
         setIsAccountDeletionPopupOpen(false);
+        await deleteAllOwnWaypoints();
+        await handleSignOut();
     };
+
+    const handleUsernameChange = async (): Promise<void> => {
+        setUsernameChangeError(null);
+        if (!newUsername) {
+            setUsernameChangeError('Please enter a username.');
+            return;
+        }
+        if (newUsername === currentUsername) {
+            setUsernameChangeError('Same as old username. Please enter a new username.');
+            return;
+        }
+
+        setIsUsernameChangeLoading(true);
+        try {
+            const { data: isTaken, error: checkError } = await supabase.rpc('is_display_name_taken', {
+                check_name: newUsername,
+            });
+
+            if (checkError) {
+                setUsernameChangeError('Could not verify username. Please try again.');
+                return;
+            }
+
+            if (isTaken) {
+                setUsernameChangeError('This username is already taken.');
+                return;
+            }
+
+            const { error: authError } = await supabase.auth.updateUser({ data: { display_name: newUsername } });
+            if (authError) {
+                setUsernameChangeError(authError.message);
+                return;
+            }
+
+            const { error: rpcError } = await supabase.rpc('update_username', { new_name: newUsername });
+            if (rpcError) {
+                setUsernameChangeError('Could not update username. Please try again.');
+                return;
+            }
+
+            setCurrentUsername(newUsername);
+            setNewUsername('');
+        } finally {
+            setIsUsernameChangeLoading(false);
+        }
+    };
+
+    const handleRegionChange = async (): Promise<void> => {
+        setRegionChangeError(null);
+        if (!newRegion) {
+            setRegionChangeError('Please choose a region.');
+            return;
+        }
+        if (newRegion === currentRegion) {
+            setRegionChangeError('Same as old region. Please enter a new region.');
+            return;
+        }
+
+        setIsRegionChangeLoading(true);
+        try {
+            const { error } = await supabase.rpc('update_region', { new_region: newRegion });
+            if (error) {
+                setRegionChangeError(error.message || 'Could not update region. Please try again.');
+                return;
+            }
+
+            setCurrentRegion(newRegion);
+            setNewRegion('');
+        } finally {
+            setIsRegionChangeLoading(false);
+        }
+    };
+
+    const handleCloseInfoChange = (): void => {
+        setNewUsername('');
+        setNewRegion('');
+        setNewRegionSearch('');
+        setUsernameChangeError(null);
+        setRegionChangeError(null);
+        setIsAccountInfoChangePopupOpen(false);
+    }
 
     return (
         <div className="account-icon"
@@ -242,37 +450,56 @@ function Account(): React.JSX.Element {
             )}
             {isLoginPopupOpen && (
                 <div className="sign-in-overlay">
-                    <div className="sign-in-popup">
+                    <form
+                        className="sign-in-popup"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            handleSignIn();
+                        }}
+                    >
                         <h2>Sign In</h2>
                         <input
                             type="text"
-                            placeholder="Email"
+                            placeholder="Email or Username"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSignIn();
+                                }
+                            }}
                         />
                         <input
                             type="password"
                             placeholder="Password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSignIn();
+                                }
+                            }}
                         />
                         {accountSignInError && (
                             <p className="error-message">{accountSignInError}</p>
                         )}
                         <button
+                            type="submit"
                             className="sign-in-button"
-                            onClick={handleSignIn}
                             disabled={isLoading}
                         >
                             Confirm
                         </button>
                         <button
+                            type="button"
                             className="close-button"
                             onClick={() => { resetForm(); setIsLoginPopupOpen(false); }}
                         >
                             Cancel
                         </button>
-                    </div>
+                    </form>
                 </div>
             )}
             {isAccountCreationPopupOpen && (
@@ -297,12 +524,53 @@ function Account(): React.JSX.Element {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                         />
+                        <p className="password-hint">Password must be at least 6 characters</p>
                         <input
                             type="password"
                             placeholder="Confirm Password"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                         />
+                        <div className="region-dropdown">
+                            <input
+                                type="text"
+                                placeholder="Home Region"
+                                value={isRegionOpen ? regionSearch : homeRegion}
+                                onFocus={() => {
+                                    setRegionSearch('');
+                                    setIsRegionOpen(true);
+                                }}
+                                onChange={(e) => setRegionSearch(e.target.value)}
+                                onBlur={() => {
+                                    setIsRegionOpen(false);
+                                }}
+                            />
+                            {isRegionOpen && (
+                                <div className="region-dropdown-list">
+                                    {homeRegions
+                                        .filter((region) =>
+                                            region.toLowerCase().includes(regionSearch.toLowerCase())
+                                        )
+                                        .map((region) => (
+                                            <div
+                                                key={region}
+                                                className="region-dropdown-option"
+                                                onMouseDown={() => {
+                                                    setHomeRegion(region);
+                                                    setIsRegionOpen(false);
+                                                }}
+                                            >
+                                                {region}
+                                            </div>
+                                    ))}
+                                    {homeRegions.filter((region) =>
+                                        region.toLowerCase().includes(regionSearch.toLowerCase())
+                                    ).length === 0 && (
+                                        <div className="region-dropdown-empty">No matches</div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                         {accountCreationError && (
                             <p className="error-message">{accountCreationError}</p>
                         )}
@@ -338,6 +606,9 @@ function Account(): React.JSX.Element {
                 <div className="settings-overlay">
                     <div className="settings-popup">
                         <button className="close-button" onClick={() => setIsAccountSettingsPopupOpen(false)}>Close</button>
+                        <button className="account-info-change-button" onClick={() => { setIsAccountInfoChangePopupOpen(true); }}>
+                            Change Account Info
+                        </button>
                         <button className="delete-account-button" onClick={() => { setAccountDeletionError(null); setIsAccountDeletionPopupOpen(true); }}>
                             Delete Account
                         </button>
@@ -356,6 +627,66 @@ function Account(): React.JSX.Element {
                 </div>
             )
             }
+            {isAccountInfoChangePopupOpen && (
+                <div className="sign-in-overlay">
+                    <div className="sign-in-popup">
+                        <button className="close-button" onClick={handleCloseInfoChange}>
+                            Close
+                        </button>
+
+                        <p>Current Username: {currentUsername}</p>
+                        <input
+                            type="text"
+                            placeholder="New username"
+                            value={newUsername}
+                            onChange={(e) => setNewUsername(e.target.value)}
+                        />
+                        {usernameChangeError && <p className="error-message">{usernameChangeError}</p>}
+                        <button onClick={handleUsernameChange} disabled={isUsernameChangeLoading} className="confirm-change-button">
+                            Confirm
+                        </button>
+
+                        <p>Current Home Region: {currentRegion}</p>
+                        <div className="region-dropdown">
+                            <input
+                                type="text"
+                                placeholder="New home region"
+                                value={isNewRegionOpen ? newRegionSearch : newRegion}
+                                onFocus={() => {
+                                    setNewRegionSearch('');
+                                    setIsNewRegionOpen(true);
+                                }}
+                                onChange={(e) => setNewRegionSearch(e.target.value)}
+                                onBlur={() => {
+                                    setIsNewRegionOpen(false);
+                                }}
+                            />
+                            {isNewRegionOpen && (
+                                <div className="region-dropdown-list">
+                                    {homeRegions
+                                        .filter((region) => region.toLowerCase().includes(newRegionSearch.toLowerCase()))
+                                        .map((region) => (
+                                            <div
+                                                key={region}
+                                                className="region-dropdown-option"
+                                                onMouseDown={() => {
+                                                    setNewRegion(region);
+                                                    setIsNewRegionOpen(false);
+                                                }}
+                                            >
+                                                {region}
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
+                        </div>
+                        {regionChangeError && <p className="error-message">{regionChangeError}</p>}
+                        <button onClick={handleRegionChange} disabled={isRegionChangeLoading} className="confirm-change-button">
+                            Confirm
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

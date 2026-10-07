@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:client": "node testing/server.js",
+    "test_client": "node testing/server.js"
   },
   "dependencies": {
     "@mapbox/search-js-core": "^1.6.0",
