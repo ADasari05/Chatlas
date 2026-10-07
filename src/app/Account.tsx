@@ -7,6 +7,16 @@ interface AccountOption {
     label: string;
 }
 
+interface AccountInfo {
+    user_name?: string;
+    home_region?: string;
+}
+
+interface EmailStatus {
+    exists_already?: boolean;
+    disabled?: boolean;
+}
+
 export let loginStatus = false;
 
 export function setLoginStatus(status: boolean): void {
@@ -99,9 +109,10 @@ function Account(): React.JSX.Element {
         }
 
         supabase.rpc('get_account_info').maybeSingle().then(({ data }) => {
-            if (data) {
-                setCurrentUsername(data.user_name ?? '');
-                setCurrentRegion(data.home_region ?? '');
+            const info = data as AccountInfo | null;
+            if (info) {
+                setCurrentUsername(info.user_name ?? '');
+                setCurrentRegion(info.home_region ?? '');
             }
         });
 
@@ -182,9 +193,24 @@ function Account(): React.JSX.Element {
         }
         setIsLoading(true);
         try {
+            let loginEmail = email.trim();
+
+            // If user entered a username (does not contain '@'), resolve to email via RPC
+            if (!loginEmail.includes('@')) {
+                const { data: resolvedEmail, error: resolveError } = await supabase.rpc('get_email_for_username', {
+                    check_username: loginEmail,
+                });
+
+                if (resolveError || !resolvedEmail) {
+                    setAccountSignInError('Invalid login credentials.');
+                    return;
+                }
+                loginEmail = resolvedEmail;
+            }
+
             const [signInResult, statusResult] = await Promise.all([
-                supabase.auth.signInWithPassword({ email, password }),
-                supabase.rpc('get_email_status', { check_email: email }).maybeSingle(),
+                supabase.auth.signInWithPassword({ email: loginEmail, password }),
+                supabase.rpc('get_email_status', { check_email: loginEmail }).maybeSingle(),
             ]);
 
             if (signInResult.error) {
@@ -192,7 +218,8 @@ function Account(): React.JSX.Element {
                 return;
             }
 
-            if (statusResult.data?.disabled) {
+            const userEmailStatus = statusResult.data as EmailStatus | null;
+            if (userEmailStatus?.disabled) {
                 await supabase.auth.signOut();
                 setAccountSignInError('This account is pending deletion and cannot be signed in to.');
                 return;
@@ -213,6 +240,10 @@ function Account(): React.JSX.Element {
             setAccountCreationError('Please fill in all fields.');
             return;
         }
+        if (password.length < 6) {
+            setAccountCreationError('Password must be at least 6 characters.');
+            return;
+        }
         if (password !== confirmPassword) {
             setAccountCreationError('Passwords do not match.');
             return;
@@ -228,9 +259,10 @@ function Account(): React.JSX.Element {
             return;
         }
     
-        if (emailStatus.data?.exists_already) {
+        const emailStatusData = emailStatus.data as EmailStatus | null;
+        if (emailStatusData?.exists_already) {
             setAccountCreationError(
-                emailStatus.data.disabled
+                emailStatusData.disabled
                     ? 'This email belongs to an account pending deletion. Please use a different email.'
                     : 'This email is already registered.'
             );
@@ -263,6 +295,7 @@ function Account(): React.JSX.Element {
         if (data.user) {
             const { error: insertError } = await supabase.from('UserData').insert({
                 id: data.user.id,
+                user_auth_id: data.user.id,
                 user_name: username,
                 home_region: homeRegion,
             });
@@ -369,7 +402,7 @@ function Account(): React.JSX.Element {
         try {
             const { error } = await supabase.rpc('update_region', { new_region: newRegion });
             if (error) {
-                setRegionChangeError('Could not update region. Please try again.');
+                setRegionChangeError(error.message || 'Could not update region. Please try again.');
                 return;
             }
 
@@ -417,37 +450,56 @@ function Account(): React.JSX.Element {
             )}
             {isLoginPopupOpen && (
                 <div className="sign-in-overlay">
-                    <div className="sign-in-popup">
+                    <form
+                        className="sign-in-popup"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            handleSignIn();
+                        }}
+                    >
                         <h2>Sign In</h2>
                         <input
                             type="text"
-                            placeholder="Email"
+                            placeholder="Email or Username"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSignIn();
+                                }
+                            }}
                         />
                         <input
                             type="password"
                             placeholder="Password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSignIn();
+                                }
+                            }}
                         />
                         {accountSignInError && (
                             <p className="error-message">{accountSignInError}</p>
                         )}
                         <button
+                            type="submit"
                             className="sign-in-button"
-                            onClick={handleSignIn}
                             disabled={isLoading}
                         >
                             Confirm
                         </button>
                         <button
+                            type="button"
                             className="close-button"
                             onClick={() => { resetForm(); setIsLoginPopupOpen(false); }}
                         >
                             Cancel
                         </button>
-                    </div>
+                    </form>
                 </div>
             )}
             {isAccountCreationPopupOpen && (
@@ -472,6 +524,7 @@ function Account(): React.JSX.Element {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                         />
+                        <p className="password-hint">Password must be at least 6 characters</p>
                         <input
                             type="password"
                             placeholder="Confirm Password"
