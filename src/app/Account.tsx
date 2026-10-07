@@ -7,6 +7,16 @@ interface AccountOption {
     label: string;
 }
 
+interface AccountInfo {
+    user_name?: string;
+    home_region?: string;
+}
+
+interface EmailStatus {
+    exists_already?: boolean;
+    disabled?: boolean;
+}
+
 export let loginStatus = false;
 
 export function setLoginStatus(status: boolean): void {
@@ -99,9 +109,10 @@ function Account(): React.JSX.Element {
         }
 
         supabase.rpc('get_account_info').maybeSingle().then(({ data }) => {
-            if (data) {
-                setCurrentUsername(data.user_name ?? '');
-                setCurrentRegion(data.home_region ?? '');
+            const info = data as AccountInfo | null;
+            if (info) {
+                setCurrentUsername(info.user_name ?? '');
+                setCurrentRegion(info.home_region ?? '');
             }
         });
 
@@ -192,7 +203,8 @@ function Account(): React.JSX.Element {
                 return;
             }
 
-            if (statusResult.data?.disabled) {
+            const userEmailStatus = statusResult.data as EmailStatus | null;
+            if (userEmailStatus?.disabled) {
                 await supabase.auth.signOut();
                 setAccountSignInError('This account is pending deletion and cannot be signed in to.');
                 return;
@@ -227,9 +239,10 @@ function Account(): React.JSX.Element {
             return;
         }
     
-        if (emailStatus.data?.exists_already) {
+        const emailStatusData = emailStatus.data as EmailStatus | null;
+        if (emailStatusData?.exists_already) {
             setAccountCreationError(
-                emailStatus.data.disabled
+                emailStatusData.disabled
                     ? 'This email belongs to an account pending deletion. Please use a different email.'
                     : 'This email is already registered.'
             );

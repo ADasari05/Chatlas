@@ -483,7 +483,7 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                 originalEvent: {
                     detail: 1
                 }
-            });
+            } as unknown as mapboxgl.MapMouseEvent);
         });
     };
 
