@@ -2,10 +2,12 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
+import type { MapMouseEvent } from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import MapStyleMenu, { MapStyleOption } from './MapStyleMenu';
 import { loginStatus } from './Account';
 import { createClient } from '@/utils/supabase/client';
+import { openWaypointChat } from './WaypointChat';
 
 const supabase = createClient();
 
@@ -81,7 +83,7 @@ let nextTempWaypointId = -1;
 let currentMap: mapboxgl.Map | null = null;
 let waypointsVisible = true;
 let onOwnWaypointClick: ((id: number) => void) | null = null;
-let onOtherWaypointClick: ((ownerUserId: string) => void) | null = null;
+let onOtherWaypointClick: ((waypointId: number, ownerUserId: string) => void) | null = null;
 
 function setStreetLayersVisible(map: mapboxgl.Map, visible: boolean): void {
     for (const layer of map.getStyle()?.layers ?? []) {
@@ -127,7 +129,7 @@ async function loadWaypoints(map: mapboxgl.Map, visible: boolean): Promise<void>
         }
         marker.getElement().addEventListener('click', (ev) => {
             ev.stopPropagation();
-            onOtherWaypointClick?.(wp.owner_user_id);
+            onOtherWaypointClick?.(wp.id, wp.owner_user_id);
         });
         otherWaypoints.push({ id: wp.id, marker, ownerUserId: wp.owner_user_id });
     }
@@ -308,6 +310,7 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
     const [selectedOwnWaypointId, setSelectedOwnWaypointId] = useState<number | null>(null);
     const [isChatWaypointPopupOpen, setIsChatWaypointPopupOpen] = useState(false);
     const [selectedOtherWaypointOwnerId, setSelectedOtherWaypointOwnerId] = useState<string | null>(null);
+    const [selectedOtherWaypointId, setSelectedOtherWaypointId] = useState<number | null> (null);
 
     useEffect(() => {
         if (!containerRef.current) return;
@@ -329,7 +332,8 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
             setSelectedOwnWaypointId(id);
             setIsDeleteWaypointPopupOpen(true);
         };
-        onOtherWaypointClick = (ownerUserId) => {
+        onOtherWaypointClick = (waypointId, ownerUserId) => {
+            setSelectedOtherWaypointId(waypointId);
             setSelectedOtherWaypointOwnerId(ownerUserId);
             setIsChatWaypointPopupOpen(true);
         };
@@ -593,16 +597,14 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
         });
 
         map.once('idle', () => {
-            const targetLngLat = { lng, lat };
-            const targetPoint = map.project([lng, lat]);
+            const targetLngLat = new mapboxgl.LngLat(lng, lat);
+            const targetPoint = map.project(targetLngLat);
 
             map.fire('click', {
                 lngLat: targetLngLat,
                 point: targetPoint,
-                originalEvent: {
-                    detail: 1
-                }
-            });
+                originalEvent: new MouseEvent('click', { detail: 1 }),
+            } as unknown as MapMouseEvent);
         });
     };
 
@@ -670,10 +672,10 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
     };
  
     const openChatWithWaypointOwner = (): void => {
-        if (selectedOtherWaypointOwnerId === null) {
+        if (selectedOtherWaypointId === null) {
             return;
         }
-        console.log('Open chat with,', selectedOtherWaypointOwnerId);
+        openWaypointChat(selectedOtherWaypointId);
     };
 
     const confirmWaypoint = async (): Promise<void> => {
@@ -744,6 +746,18 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                         className="waypoint-confirm-button"
                         onClick={() => {
                             setIsDeleteWaypointPopupOpen(false);
+                            if (selectedOwnWaypointId !== null && selectedOwnWaypointId > 0) {
+                                openWaypointChat(selectedOwnWaypointId);
+                            }
+                        }}
+                    >
+                        Chat
+                    </button>
+
+                    <button
+                        className="waypoint-confirm-button"
+                        onClick={() => {
+                            setIsDeleteWaypointPopupOpen(false);
                             deleteSelectedWaypoint();
                         }}
                     >
@@ -779,6 +793,7 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                         onClick={() => {
                             setIsChatWaypointPopupOpen(false);
                             setSelectedOtherWaypointOwnerId(null);
+                            setSelectedOtherWaypointId(null);
                         }}
                     >
                         Cancel

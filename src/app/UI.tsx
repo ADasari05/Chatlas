@@ -6,6 +6,7 @@ import Map, { SelectedLocation } from './Map';
 import InfoPanel, { OpenPanel } from './InfoPanel';
 import SearchBar from './SearchBar';
 import Account from './Account';
+import WaypointChat from './WaypointChat';
 
 interface MenuOption {
     id: string;
@@ -56,6 +57,7 @@ const UI: React.FC = () => {
                 <SearchBar onLocationSelected={handleLocationSelected} />
                 <Map selectedLocation={selectedLocation} onLocationSelected={handleLocationSelected} />
                 <InfoPanel selectedLocation={selectedLocation} />
+                <WaypointChat />
             </div>
         </div>
     );

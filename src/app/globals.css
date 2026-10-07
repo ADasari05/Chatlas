@@ -568,3 +568,46 @@
     border-radius: 50%;
     border: 2px solid white;
 }
+
+.waypoint-chat {
+    position: fixed;
+    top: 20px;
+    right: 60px;
+    width: 300px;
+    height: 400px;
+    display: flex;
+    flex-direction: column;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    z-index: 30;
+}
+
+.waypoint-chat-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px;
+    border-bottom: 1px solid #ccc;
+    font-weight: bold;
+}
+
+.waypoint-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.waypoint-chat-message {
+    margin-bottom: 8px;
+}
+
+.waypoint-chat-input {
+    display: flex;
+    gap: 5px;
+    padding: 10px;
+    border-top: 1px solid #ccc;
+}
+
+.waypoint-chat-input input {
+    flex: 1;
+}

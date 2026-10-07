@@ -1,0 +1,128 @@
+"use client";
+
+import React, { useState, useEffect } from 'react';
+import { createClient } from '@/utils/supabase/client';
+
+const supabase = createClient();
+
+interface Message {
+    id: number;
+    timestamp: string;
+    message_contents: string;
+    sender_name: string | null;
+}
+
+export function openWaypointChat(waypointId: number): void {
+    window.dispatchEvent(new CustomEvent('openWaypointChat', { detail: waypointId }));
+}
+
+async function getMessages(chatId: number): Promise<Message[]> {
+    const { data, error } = await supabase.rpc('get_messages', { chat_connection_id: chatId });
+
+    if (error) {
+        console.error('Could not load messages,', error);
+        return [];
+    }
+    return data;
+}
+
+function WaypointChat(): React.JSX.Element | null {
+    const [isOpen, setIsOpen] = useState<boolean>(false);
+    const [chatId, setChatId] = useState<number | null>(null);
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [newMessage, setNewMessage] = useState<string>('');
+
+    // Open the chat for whichever waypoint was clicked
+    useEffect(() => {
+        const openChat = async (e: Event): Promise<void> => {
+            const waypointId = (e as CustomEvent<number>).detail;
+            setIsOpen(true);
+            setMessages([]);
+
+            const { data } = await supabase
+                .from('Waypoints')
+                .select('associated_chat_connection')
+                .eq('id', waypointId)
+                .single();
+
+            setChatId(data?.associated_chat_connection ?? null);
+        };
+
+        window.addEventListener('openWaypointChat', openChat);
+
+        return () => {
+            window.removeEventListener('openWaypointChat', openChat);
+        };
+    }, []);
+
+    // Load messages, then check for new ones every 3 seconds
+    useEffect(() => {
+        if (chatId === null) return;
+
+        const refresh = async (): Promise<void> => {
+            setMessages(await getMessages(chatId));
+        };
+
+        refresh();
+        const interval = setInterval(refresh, 3000);
+
+        return () => clearInterval(interval);
+    }, [chatId]);
+
+    const sendMessage = async (): Promise<void> => {
+        if (chatId === null || newMessage.trim() === '') return;
+
+        const { error } = await supabase.rpc('send_message', {
+            text_contents: newMessage,
+            chat_connection_id: chatId,
+        });
+
+        if (error) {
+            console.error('Could not send message,', error);
+            return;
+        }
+
+        setNewMessage('');
+        setMessages(await getMessages(chatId));
+    };
+
+    const closeChat = (): void => {
+        setIsOpen(false);
+        setChatId(null);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="waypoint-chat">
+            <div className="waypoint-chat-header">
+                <span>Waypoint Chat</span>
+                <button onClick={closeChat}>X</button>
+            </div>
+            <div className="waypoint-chat-messages">
+                {messages.map((message) => (
+                    <div key={message.id} className="waypoint-chat-message">
+                        <b>{message.sender_name ?? 'Unknown'}: </b>
+                        {message.message_contents}
+                    </div>
+                ))}
+            </div>
+            <form
+                className="waypoint-chat-input"
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    sendMessage();
+                }}
+            >
+                <input
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Type a message..."
+                />
+                <button type="submit">Send</button>
+            </form>
+        </div>
+    );
+}
+
+export default WaypointChat;
