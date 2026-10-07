@@ -3,6 +3,7 @@ import requests
 database_url = 'https://hcmllrukdtjygcpliwsy.supabase.co'
 database_auth = database_url + '/auth/v1/token'
 database_rest = database_url + '/rest/v1/'
+database_rpc = database_rest + 'rpc/'
 api_key = 'sb_publishable_0pYEbRm9pvcbK0x2HegtTw_kdSml4jn'
 
 
@@ -101,7 +102,7 @@ def get_response(table_with_sql, access_token):
     return requests.get(database_rest + table_with_sql, headers=headers)
     
 
-# typical "POST" response and stuff -- TODO
+# typical "POST" response and stuff
 def post_response(table, access_token, json_data):
     
     if access_token == None:
@@ -119,4 +120,25 @@ def post_response(table, access_token, json_data):
         }
 
     return requests.post(database_rest + table, headers=headers, json=json_data)
+
+
+# call sql function on database
+def call_sql_function(function_name, access_token, json_data):
+    
+    if access_token == None:
+        headers = {
+            'apikey': api_key,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+        }
+    else:
+        headers = {
+            'apikey': api_key,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+            'Authorization': 'Bearer ' + access_token,
+        }
+    
+    print("target:" + database_rpc + function_name);
+    return requests.post(database_rpc + function_name, headers=headers, json=json_data)
     
