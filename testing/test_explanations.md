@@ -3,7 +3,7 @@
 This document provides a comprehensive, easily readable reference for every test implemented in the Chatlas standalone verification suite (`testing/client.js`).
 
 > [!NOTE]
-> **Maintenance Rule:** This document must be updated whenever new tests are added, modified, or reordered in the test client.
+> **Maintenance Rule:** This document must be updated whenever new tests are added, modified, or reordered in the test client. Never include identifying personal information, machine paths, or user credentials in this document.
 
 ---
 
@@ -12,7 +12,7 @@ This document provides a comprehensive, easily readable reference for every test
 The test client runs at `http://localhost:3001` (started via `npm run test:client`) and validates the entire backend pipeline:
 1. **Direct Supabase Authentication & RPCs**
 2. **Database Integrity & PostgreSQL Constraints (`UserData`, `Waypoints`, `Messages`)**
-3. **Next.js Server API Endpoints (`/api/messages`)**
+3. **Next.js Server API Endpoints (`/api/messages` - POST & GET)**
 4. **Input Validation & Security Guards**
 
 Tests can be executed in sequence using **"Run All Tests"** or individually using the dedicated **"Run"** buttons next to each test row.
@@ -33,16 +33,21 @@ Tests can be executed in sequence using **"Run All Tests"** or individually usin
 | **8** | Reject Invalid Credentials | Authentication | `auth.signInWithPassword` | Rejects wrong password with error |
 | **9** | Save Message to Waypoint | Database Integrity | `Waypoints` & `Messages` | Inserts and reads message linked to waypoint |
 | **10** | Enforce Foreign Key Constraint | Database Integrity | `public.Messages` | Rejects insert with non-existent waypoint (`23503`) |
-| **11** | Reject Unauthenticated Request | Backend API | `POST /api/messages` | HTTP `401 Unauthorized` |
-| **12** | Reject Missing waypoint_id | Backend API | `POST /api/messages` | HTTP `400 Bad Request` |
-| **13** | Reject Non-Numeric waypoint_id | Backend API | `POST /api/messages` | HTTP `400 Bad Request` |
-| **14** | Reject Missing message_contents | Backend API | `POST /api/messages` | HTTP `400 Bad Request` |
-| **15** | Reject Empty / Whitespace-Only Message | Backend API | `POST /api/messages` | HTTP `400 Bad Request` |
-| **16** | Reject Excessively Long Message | Backend API | `POST /api/messages` | HTTP `400 Bad Request` (limit: 2,000 chars) |
-| **17** | Reject Non-Existent Waypoint ID | Backend API | `POST /api/messages` | HTTP `404 Not Found` |
-| **18** | Accept Valid Request & Persist Message | Backend API | `POST /api/messages` | HTTP `201 Created` & row persisted in database |
+| **11** | Reject Unauthenticated Request | Backend Sending API | `POST /api/messages` | HTTP `401 Unauthorized` |
+| **12** | Reject Missing waypoint_id | Backend Sending API | `POST /api/messages` | HTTP `400 Bad Request` |
+| **13** | Reject Non-Numeric waypoint_id | Backend Sending API | `POST /api/messages` | HTTP `400 Bad Request` |
+| **14** | Reject Missing message_contents | Backend Sending API | `POST /api/messages` | HTTP `400 Bad Request` |
+| **15** | Reject Empty / Whitespace-Only Message | Backend Sending API | `POST /api/messages` | HTTP `400 Bad Request` |
+| **16** | Reject Excessively Long Message | Backend Sending API | `POST /api/messages` | HTTP `400 Bad Request` (limit: 2,000 chars) |
+| **17** | Reject Non-Existent Waypoint ID | Backend Sending API | `POST /api/messages` | HTTP `404 Not Found` |
+| **18** | Accept Valid Request & Persist Message | Backend Sending API | `POST /api/messages` | HTTP `201 Created` & row persisted in database |
 | **19** | Modify Profile & Region | Account Lifecycle | `rpc/update_username`, `update_region` | Profile fields updated in `UserData` |
 | **20** | Request Deletion & Verify Block | Account Lifecycle | `rpc/request_account_deletion` | Sets account status `disabled = true` |
+| **21** | Reject Unauthenticated Viewing Request | Backend Viewing API | `GET /api/messages` | HTTP `401 Unauthorized` |
+| **22** | Reject Missing waypoint_id Parameter | Backend Viewing API | `GET /api/messages` | HTTP `400 Bad Request` |
+| **23** | Reject Non-Numeric waypoint_id Parameter | Backend Viewing API | `GET /api/messages` | HTTP `400 Bad Request` |
+| **24** | Reject Non-Existent Waypoint ID | Backend Viewing API | `GET /api/messages` | HTTP `404 Not Found` |
+| **25** | Accept Valid Request & Return Messages | Backend Viewing API | `GET /api/messages` | HTTP `200 OK` & chronological messages list |
 
 ---
 
@@ -119,9 +124,9 @@ Tests can be executed in sequence using **"Run All Tests"** or individually usin
 
 ---
 
-### Section 5: Backend Messages API & Malformed Requests (`POST /api/messages`)
+### Section 5: Backend Messages Sending API (`POST /api/messages`)
 
-*This section validates the Next.js API route handler according to the Administrator user story: receiving, validating, and persisting chat message requests.*
+*Validates the Next.js API route handler according to the Administrator user story for receiving, validating, and persisting chat message sending requests.*
 
 #### 11. Reject Unauthenticated Request
 - **Purpose:** Ensures the API endpoint is protected against anonymous access.
@@ -189,9 +194,46 @@ Tests can be executed in sequence using **"Run All Tests"** or individually usin
 
 ---
 
+### Section 7: Backend Message Viewing API (`GET /api/messages`)
+
+*Validates the Next.js API route handler according to the Administrator user story for receiving, validating, and returning chat message viewing requests.*
+
+#### 21. Reject Unauthenticated Viewing Request
+- **Purpose:** Ensures message histories cannot be harvested by unauthenticated callers.
+- **Workflow:** Sends `GET http://localhost:3000/api/messages?waypoint_id=1` without any `Authorization` header.
+- **Assertions:** The server responds with HTTP `401 Unauthorized` indicating authentication is required.
+
+#### 22. Reject Missing `waypoint_id` Parameter
+- **Purpose:** Validates that incoming viewing requests explicitly designate a waypoint room.
+- **Workflow:** Sends an authenticated `GET http://localhost:3000/api/messages` omitting the `waypoint_id` query parameter.
+- **Assertions:** The server responds with HTTP `400 Bad Request` stating that `waypoint_id` is required.
+
+#### 23. Reject Non-Numeric `waypoint_id` Parameter
+- **Purpose:** Prevents malformed, string, or negative waypoint identifiers from reaching the database query.
+- **Workflow:** Sends an authenticated `GET http://localhost:3000/api/messages?waypoint_id=not_an_id`.
+- **Assertions:** The server responds with HTTP `400 Bad Request` specifying that `waypoint_id` must be a positive integer.
+
+#### 24. Reject Non-Existent Waypoint ID
+- **Purpose:** Confirms the backend verifies the referenced waypoint exists before querying or returning messages.
+- **Workflow:** Sends an authenticated `GET http://localhost:3000/api/messages?waypoint_id=999999999`.
+- **Assertions:** The server checks `public."Waypoints"` and responds with HTTP `404 Not Found`: `"Waypoint with ID 999999999 not found."`.
+
+#### 25. Accept Valid Request & Return Messages
+- **Purpose:** Tests the complete positive path for retrieving waypoint chat history via the backend API.
+- **Workflow:**
+  1. Inserts a temporary waypoint into `public."Waypoints"`.
+  2. Inserts two temporary messages with distinct timestamps into `public."Messages"`.
+  3. Sends an authenticated `GET http://localhost:3000/api/messages?waypoint_id=<id>`.
+  4. Verifies response status HTTP `200 OK`, `success: true`, and an array containing the messages.
+  5. Confirms that returned messages are arranged in ascending chronological order.
+  6. Cleans up temporary messages and waypoint from the database.
+- **Assertions:** HTTP `200 OK` returned, message count matches, and chronological sequence is verified.
+
+---
+
 ## Adding New Tests in the Future
 
-When adding a test:
+When adding a test (e.g., Test 26):
 1. **Define Test Logic in `testing/client.js`:** Add a new `case <N>:` inside `executeSingleTest()`.
 2. **Add UI Element in `testing/index.html`:** Add a new `.test-row` with `<button class="btn-run-single" data-test="<N>">Run</button>` and `<span class="test-tag" id="status-<N>">idle</span>`.
 3. **Update Total Count:** Ensure the suite loop in `client.js` runs through the new total.

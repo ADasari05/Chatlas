@@ -483,7 +483,7 @@
       const waypointId = document.getElementById('msg-waypoint-id').value.trim();
       if (!waypointId) return log('Validation Error', 'Enter Waypoint ID to fetch messages for.', true);
 
-      log('Fetching Messages for Waypoint', { waypointId: Number(waypointId) });
+      log('Fetching Messages (Direct DB) for Waypoint', { waypointId: Number(waypointId) });
       try {
         const { data, error } = await supabaseClient.from('Messages')
           .select('*')
@@ -498,6 +498,34 @@
     });
   }
 
+  const btnFetchMessagesApi = document.getElementById('btn-fetch-messages-api');
+  if (btnFetchMessagesApi) {
+    btnFetchMessagesApi.addEventListener('click', async () => {
+      const waypointId = document.getElementById('msg-waypoint-id').value.trim();
+      if (!waypointId) return log('Validation Error', 'Enter Waypoint ID to fetch messages for.', true);
+
+      log('Fetching Messages via Next.js Backend API (GET /api/messages)', { waypointId });
+      try {
+        const session = currentSession || (await supabaseClient.auth.getSession()).data.session;
+        const token = session?.access_token;
+        const res = await fetch(`http://localhost:3000/api/messages?waypoint_id=${encodeURIComponent(waypointId)}`, {
+          method: 'GET',
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          log(`Backend API Error (${res.status})`, data.error || data, true);
+        } else {
+          log(`Backend API Success (${res.status}) - ${data.count} Messages`, data);
+        }
+      } catch (err) {
+        log('Backend API Request Failed', err.message || err, true);
+      }
+    });
+  }
+
   // --- Automated Test Suite Runner & Categorization ---
 
   const testCategories = [
@@ -506,7 +534,8 @@
     { id: 'cat-auth', scoreId: 'score-cat-3', testIds: [6, 7, 8] },
     { id: 'cat-messages', scoreId: 'score-cat-4', testIds: [9, 10] },
     { id: 'cat-api-validation', scoreId: 'score-cat-5', testIds: [11, 12, 13, 14, 15, 16, 17, 18] },
-    { id: 'cat-lifecycle', scoreId: 'score-cat-6', testIds: [19, 20] }
+    { id: 'cat-lifecycle', scoreId: 'score-cat-6', testIds: [19, 20] },
+    { id: 'cat-api-viewing', scoreId: 'score-cat-7', testIds: [21, 22, 23, 24, 25] }
   ];
 
   const testResults = {};
@@ -1098,6 +1127,165 @@
           break;
         }
 
+        // --- Section 6: Backend Message Viewing API & Malformed Requests (GET /api/messages) ---
+
+        // Test 21: Reject Unauthenticated Viewing Request
+        case 21: {
+          const res = await fetch('http://localhost:3000/api/messages?waypoint_id=1', {
+            method: 'GET'
+          });
+          const data = await res.json();
+          if (res.status !== 401) {
+            throw new Error(`Expected 401 Unauthorized, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(21, 'PASSED', true);
+          log('Test 21 Passed', `Backend rejected unauthenticated viewing request with 401: "${data.error}"`);
+          break;
+        }
+
+        // Test 22: Reject Missing waypoint_id Parameter
+        case 22: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const res = await fetch('http://localhost:3000/api/messages', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (res.status !== 400) {
+            throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(22, 'PASSED', true);
+          log('Test 22 Passed', `Backend rejected missing waypoint_id parameter with 400: "${data.error}"`);
+          break;
+        }
+
+        // Test 23: Reject Non-Numeric waypoint_id Parameter
+        case 23: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const res = await fetch('http://localhost:3000/api/messages?waypoint_id=not_an_id', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (res.status !== 400) {
+            throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(23, 'PASSED', true);
+          log('Test 23 Passed', `Backend rejected non-numeric waypoint_id with 400: "${data.error}"`);
+          break;
+        }
+
+        // Test 24: Reject Non-Existent Waypoint ID
+        case 24: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const res = await fetch('http://localhost:3000/api/messages?waypoint_id=999999999', {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (res.status !== 404) {
+            throw new Error(`Expected 404 Not Found, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(24, 'PASSED', true);
+          log('Test 24 Passed', `Backend rejected non-existent waypoint with 404: "${data.error}"`);
+          break;
+        }
+
+        // Test 25: Accept Valid Request & Return Chronological Messages
+        case 25: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          // Create temporary waypoint
+          const { data: wp, error: wpErr } = await supabaseClient.from('Waypoints').insert({
+            host_user: fixture.registeredUserId,
+            longitude: -86.913,
+            latitude: 40.424
+          }).select().single();
+          if (wpErr) throw wpErr;
+
+          let msg1Id = null;
+          let msg2Id = null;
+          try {
+            const now = Date.now();
+            const { data: m1, error: m1Err } = await supabaseClient.from('Messages').insert({
+              sender_user_id: fixture.registeredUserId,
+              waypoint_id: wp.id,
+              message_contents: 'Chronological test message 1',
+              timestamp: new Date(now - 10000).toISOString()
+            }).select().single();
+            if (m1Err) throw m1Err;
+            msg1Id = m1.id;
+
+            const { data: m2, error: m2Err } = await supabaseClient.from('Messages').insert({
+              sender_user_id: fixture.registeredUserId,
+              waypoint_id: wp.id,
+              message_contents: 'Chronological test message 2',
+              timestamp: new Date(now).toISOString()
+            }).select().single();
+            if (m2Err) throw m2Err;
+            msg2Id = m2.id;
+
+            const res = await fetch(`http://localhost:3000/api/messages?waypoint_id=${wp.id}`, {
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.status !== 200 || !data.success || !Array.isArray(data.data)) {
+              throw new Error(`Expected 200 OK with messages array, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+            }
+            if (data.data.length < 2) {
+              throw new Error(`Expected at least 2 messages returned, got ${data.data.length}`);
+            }
+
+            // Verify chronological order
+            const returnedIds = data.data.map(m => m.id);
+            const idx1 = returnedIds.indexOf(msg1Id);
+            const idx2 = returnedIds.indexOf(msg2Id);
+            if (idx1 === -1 || idx2 === -1 || idx1 > idx2) {
+              throw new Error('Messages were not returned in chronological order');
+            }
+
+            setTestStatus(25, 'PASSED', true);
+            log('Test 25 Passed', `Successfully retrieved ${data.data.length} messages for Waypoint #${wp.id} in chronological order`);
+          } finally {
+            if (msg1Id) {
+              try { await supabaseClient.from('Messages').delete().eq('id', msg1Id); } catch (_) {}
+            }
+            if (msg2Id) {
+              try { await supabaseClient.from('Messages').delete().eq('id', msg2Id); } catch (_) {}
+            }
+            try { await supabaseClient.from('Waypoints').delete().eq('id', wp.id); } catch (_) {}
+          }
+          break;
+        }
+
         default:
           throw new Error(`Unknown test number: ${testNum}`);
       }
@@ -1145,7 +1333,7 @@
       const allSingleBtns = document.querySelectorAll('.btn-run-single');
       allSingleBtns.forEach(b => b.disabled = true);
 
-      log('Automated Auth & Database Suite', 'Starting 20 verification tests...');
+      log('Automated Auth & Database Suite', 'Starting 25 verification tests...');
       try { await supabaseClient.auth.signOut(); } catch (_) {}
       const timestamp = Date.now();
       const suiteCtx = {
@@ -1158,17 +1346,17 @@
         testWaypointId: null
       };
 
-      for (let i = 1; i <= 20; i++) {
+      for (let i = 1; i <= 25; i++) {
         testResults[i] = null;
         setTestStatus(i, 'WAITING', null);
       }
       updateCategoryScores();
 
       try {
-        for (let i = 1; i <= 20; i++) {
+        for (let i = 1; i <= 25; i++) {
           await executeSingleTest(i, suiteCtx);
         }
-        log('Completed Suite', 'All 20 tests finished execution.');
+        log('Completed Suite', 'All 25 tests finished execution.');
       } finally {
         isTestRunning = false;
         btnRunTests.disabled = false;

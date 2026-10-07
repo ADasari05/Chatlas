@@ -4,12 +4,15 @@ import { createClient } from "@/utils/supabase/server";
 const MAX_MESSAGE_LENGTH = 2000;
 
 function corsHeaders(origin?: string | null): HeadersInit {
-  return {
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Origin": origin || "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Credentials": "true",
   };
+  if (origin) {
+    headers["Access-Control-Allow-Credentials"] = "true";
+  }
+  return headers;
 }
 
 export async function OPTIONS(request: NextRequest) {
@@ -20,18 +23,48 @@ export async function OPTIONS(request: NextRequest) {
   });
 }
 
+// Helper to authenticate caller via Bearer token or cookies
+async function authenticateCaller(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  authHeader: string | null
+) {
+  if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+    const token = authHeader.substring(7).trim();
+    const { data, error } = await supabase.auth.getUser(token);
+    if (!error && data?.user) return data.user;
+  } else {
+    const { data, error } = await supabase.auth.getUser();
+    if (!error && data?.user) return data.user;
+  }
+  return null;
+}
+
 /**
  * GET /api/messages?waypoint_id=<id>
- * Fetches all messages associated with a given waypoint.
+ * Validates request and fetches all messages associated with a given waypoint.
  */
 export async function GET(request: NextRequest) {
   const origin = request.headers.get("origin");
+  const authHeader = request.headers.get("authorization");
+
+  // 1. Authenticate Caller
+  const supabase = await createClient({ authHeader });
+  const user = await authenticateCaller(supabase, authHeader);
+
+  if (!user) {
+    return NextResponse.json(
+      { error: "Authentication required. Please sign in or provide a valid Bearer token." },
+      { status: 401, headers: corsHeaders(origin) }
+    );
+  }
+
+  // 2. Validate Query Parameter
   const { searchParams } = new URL(request.url);
   const waypointParam = searchParams.get("waypoint_id");
 
   if (!waypointParam) {
     return NextResponse.json(
-      { error: "Query parameter 'waypoint_id' is required." },
+      { error: "Validation failed: Query parameter 'waypoint_id' is required." },
       { status: 400, headers: corsHeaders(origin) }
     );
   }
@@ -39,13 +72,33 @@ export async function GET(request: NextRequest) {
   const waypointId = Number(waypointParam);
   if (!Number.isInteger(waypointId) || waypointId <= 0) {
     return NextResponse.json(
-      { error: "Query parameter 'waypoint_id' must be a positive integer." },
+      { error: "Validation failed: Query parameter 'waypoint_id' must be a positive integer." },
       { status: 400, headers: corsHeaders(origin) }
     );
   }
 
-  const authHeader = request.headers.get("authorization");
-  const supabase = await createClient({ authHeader });
+  // 3. Verify Target Waypoint Exists in Database
+  const { data: waypoint, error: wpError } = await supabase
+    .from("Waypoints")
+    .select("id")
+    .eq("id", waypointId)
+    .maybeSingle();
+
+  if (wpError) {
+    return NextResponse.json(
+      { error: `Database error checking waypoint: ${wpError.message}` },
+      { status: 500, headers: corsHeaders(origin) }
+    );
+  }
+
+  if (!waypoint) {
+    return NextResponse.json(
+      { error: `Waypoint with ID ${waypointId} not found.` },
+      { status: 404, headers: corsHeaders(origin) }
+    );
+  }
+
+  // 4. Retrieve Messages
   const { data: messages, error } = await supabase
     .from("Messages")
     .select("*")
@@ -54,7 +107,7 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     return NextResponse.json(
-      { error: error.message },
+      { error: `Database error fetching messages: ${error.message}` },
       { status: 500, headers: corsHeaders(origin) }
     );
   }
@@ -75,20 +128,7 @@ export async function POST(request: NextRequest) {
 
   // 1. Authenticate Caller
   const supabase = await createClient({ authHeader });
-  let user = null;
-
-  if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
-    const token = authHeader.substring(7).trim();
-    const { data, error } = await supabase.auth.getUser(token);
-    if (!error && data?.user) {
-      user = data.user;
-    }
-  } else {
-    const { data, error } = await supabase.auth.getUser();
-    if (!error && data?.user) {
-      user = data.user;
-    }
-  }
+  const user = await authenticateCaller(supabase, authHeader);
 
   if (!user) {
     return NextResponse.json(
