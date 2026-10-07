@@ -381,6 +381,37 @@
     });
   }
 
+  const btnDeleteApi = document.getElementById('btn-delete-account-api');
+  if (btnDeleteApi) {
+    btnDeleteApi.addEventListener('click', async () => {
+      if (!supabaseClient) return;
+      const session = currentSession || (await supabaseClient.auth.getSession()).data.session;
+      if (!session) {
+        return log('Authentication Required', 'Please sign in to delete your account via Backend API.', true);
+      }
+      log('Deleting Account via Backend API (DELETE /api/users)', { userId: session.user.id });
+      try {
+        const res = await fetch('http://localhost:3000/api/users', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ user_id: session.user.id })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          log(`Delete User API Error (${res.status})`, data.error || data, true);
+        } else {
+          log(`Delete User API Success (${res.status})`, data);
+          await supabaseClient.auth.signOut();
+        }
+      } catch (err) {
+        log('Delete User Request Failed', err.message || err, true);
+      }
+    });
+  }
+
   // --- Messages Table Operations ---
   const btnCreateWaypoint = document.getElementById('btn-create-test-waypoint');
   if (btnCreateWaypoint) {
@@ -535,7 +566,8 @@
     { id: 'cat-messages', scoreId: 'score-cat-4', testIds: [9, 10] },
     { id: 'cat-api-validation', scoreId: 'score-cat-5', testIds: [11, 12, 13, 14, 15, 16, 17, 18] },
     { id: 'cat-lifecycle', scoreId: 'score-cat-6', testIds: [19, 20] },
-    { id: 'cat-api-viewing', scoreId: 'score-cat-7', testIds: [21, 22, 23, 24, 25] }
+    { id: 'cat-api-viewing', scoreId: 'score-cat-7', testIds: [21, 22, 23, 24, 25] },
+    { id: 'cat-api-deletion', scoreId: 'score-cat-8', testIds: [26, 27, 28, 29, 30] }
   ];
 
   const testResults = {};
@@ -1286,6 +1318,189 @@
           break;
         }
 
+        // --- Section 8: User Account Deletion API & Malformed Requests (DELETE /api/users) ---
+
+        // Test 26: Reject Unauthenticated Deletion Request
+        case 26: {
+          const res = await fetch('http://localhost:3000/api/users', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: '00000000-0000-0000-0000-000000000000' })
+          });
+          const data = await res.json();
+          if (res.status !== 401) {
+            throw new Error(`Expected 401 Unauthorized, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(26, 'PASSED', true);
+          log('Test 26 Passed', `Backend rejected unauthenticated deletion request with 401: "${data.error}"`);
+          break;
+        }
+
+        // Test 27: Reject Missing user_id Parameter
+        case 27: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const res = await fetch('http://localhost:3000/api/users', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({})
+          });
+          const data = await res.json();
+          if (res.status !== 400) {
+            throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(27, 'PASSED', true);
+          log('Test 27 Passed', `Backend rejected missing user_id with 400: "${data.error}"`);
+          break;
+        }
+
+        // Test 28: Reject Invalid UUID user_id Parameter
+        case 28: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const res = await fetch('http://localhost:3000/api/users', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ user_id: 'invalid-not-a-uuid' })
+          });
+          const data = await res.json();
+          if (res.status !== 400) {
+            throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(28, 'PASSED', true);
+          log('Test 28 Passed', `Backend rejected invalid UUID with 400: "${data.error}"`);
+          break;
+        }
+
+        // Test 29: Reject Non-Existent User ID
+        case 29: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const res = await fetch('http://localhost:3000/api/users', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ user_id: '00000000-0000-0000-0000-000000000000' })
+          });
+          const data = await res.json();
+          if (res.status !== 404 && res.status !== 403) {
+            throw new Error(`Expected 404 Not Found or 403 Forbidden, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(29, 'PASSED', true);
+          log('Test 29 Passed', `Backend rejected non-existent / unauthorized user target with HTTP ${res.status}: "${data.error}"`);
+          break;
+        }
+
+        // Test 30: Accept Valid Deletion & Purge Supabase Auth (Waypoints Deleted, Messages Kept)
+        case 30: {
+          const ts = Date.now();
+          const delUser = `del_runner_${ts}`;
+          const delEmail = `del_${ts}@chatlas.local`;
+          const delPassword = `DeletePass#${ts}!`;
+
+          const { data: signUpData, error: signUpErr } = await supabaseClient.auth.signUp({
+            email: delEmail,
+            password: delPassword,
+            options: { data: { display_name: delUser } }
+          });
+          if (signUpErr) throw signUpErr;
+          const disposableUserId = signUpData.user.id;
+
+          const { data: profileData, error: profileErr } = await supabaseClient.from('UserData').insert({
+            id: disposableUserId,
+            user_auth_id: disposableUserId,
+            user_name: delUser,
+            home_region: 'United States'
+          }).select().single();
+          if (profileErr) throw profileErr;
+
+          const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
+            email: delEmail,
+            password: delPassword
+          });
+          if (signInErr) throw signInErr;
+          const token = signInData.session.access_token;
+
+          // Create a test waypoint hosted by this user
+          const { data: wpData, error: wpErr } = await supabaseClient.from('Waypoints').insert({
+            host_user: profileData.id,
+            longitude: -86.91,
+            latitude: 40.42
+          }).select().single();
+          if (wpErr) throw wpErr;
+
+          // Create a test message inside this waypoint
+          const { data: msgData, error: msgErr } = await supabaseClient.from('Messages').insert({
+            sender_user_id: profileData.id,
+            waypoint_id: wpData.id,
+            message_contents: 'Message preserved after account deletion test'
+          }).select().single();
+          if (msgErr) throw msgErr;
+
+          const res = await fetch('http://localhost:3000/api/users', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ user_id: disposableUserId })
+          });
+          const data = await res.json();
+
+          if (res.status === 500 && (String(data.error).includes('SUPABASE_SECRET_KEY') || String(data.error).includes('SUPABASE_SERVICE_ROLE_KEY'))) {
+            throw new Error(`Server requires SUPABASE_SECRET_KEY in .env.local to execute Supabase Auth deletion: ${data.error}`);
+          }
+
+          if (res.status !== 200) {
+            throw new Error(`Expected 200 OK, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+
+          // 1. Verify Waypoint is DELETED
+          const { data: checkedWp } = await supabaseClient.from('Waypoints').select('id').eq('id', wpData.id).maybeSingle();
+          if (checkedWp) {
+            throw new Error(`Expected Waypoint #${wpData.id} to be deleted, but it still exists.`);
+          }
+
+          // 2. Verify Message is KEPT (retained in database)
+          const { data: checkedMsg } = await supabaseClient.from('Messages').select('id, message_contents, waypoint_id').eq('id', msgData.id).maybeSingle();
+          if (!checkedMsg) {
+            throw new Error(`Expected Message #${msgData.id} to be kept, but it was removed.`);
+          }
+          if (checkedMsg.message_contents !== 'Message preserved after account deletion test') {
+            throw new Error('Message contents were unexpectedly modified.');
+          }
+
+          // Clean up the verified message
+          try { await supabaseClient.from('Messages').delete().eq('id', msgData.id); } catch (_) {}
+
+          // 3. Verify user cannot log in
+          const { error: reloginErr } = await supabaseClient.auth.signInWithPassword({
+            email: delEmail,
+            password: delPassword
+          });
+          if (!reloginErr) {
+            throw new Error('Expected login to fail after permanent account deletion, but login succeeded');
+          }
+
+          setTestStatus(30, 'PASSED', true);
+          log('Test 30 Passed', `User ${disposableUserId} purged from auth; waypoint deleted, message preserved.`);
+          break;
+        }
+
         default:
           throw new Error(`Unknown test number: ${testNum}`);
       }
@@ -1333,7 +1548,7 @@
       const allSingleBtns = document.querySelectorAll('.btn-run-single');
       allSingleBtns.forEach(b => b.disabled = true);
 
-      log('Automated Auth & Database Suite', 'Starting 25 verification tests...');
+      log('Automated Auth & Database Suite', 'Starting 30 verification tests...');
       try { await supabaseClient.auth.signOut(); } catch (_) {}
       const timestamp = Date.now();
       const suiteCtx = {
@@ -1346,17 +1561,17 @@
         testWaypointId: null
       };
 
-      for (let i = 1; i <= 25; i++) {
+      for (let i = 1; i <= 30; i++) {
         testResults[i] = null;
         setTestStatus(i, 'WAITING', null);
       }
       updateCategoryScores();
 
       try {
-        for (let i = 1; i <= 25; i++) {
+        for (let i = 1; i <= 30; i++) {
           await executeSingleTest(i, suiteCtx);
         }
-        log('Completed Suite', 'All 25 tests finished execution.');
+        log('Completed Suite', 'All 30 tests finished execution.');
       } finally {
         isTestRunning = false;
         btnRunTests.disabled = false;

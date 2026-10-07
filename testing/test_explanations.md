@@ -12,8 +12,8 @@ This document provides a comprehensive, easily readable reference for every test
 The test client runs at `http://localhost:3001` (started via `npm run test:client`) and validates the entire backend pipeline:
 1. **Direct Supabase Authentication & RPCs**
 2. **Database Integrity & PostgreSQL Constraints (`UserData`, `Waypoints`, `Messages`)**
-3. **Next.js Server API Endpoints (`/api/messages` - POST & GET)**
-4. **Input Validation & Security Guards**
+3. **Next.js Server API Endpoints (`/api/messages`, `/api/users`)**
+4. **Input Validation, Authorization, & Security Guards**
 
 Tests can be executed in sequence using **"Run All Tests"** or individually using the dedicated **"Run"** buttons next to each test row.
 
@@ -48,6 +48,11 @@ Tests can be executed in sequence using **"Run All Tests"** or individually usin
 | **23** | Reject Non-Numeric waypoint_id Parameter | Backend Viewing API | `GET /api/messages` | HTTP `400 Bad Request` |
 | **24** | Reject Non-Existent Waypoint ID | Backend Viewing API | `GET /api/messages` | HTTP `404 Not Found` |
 | **25** | Accept Valid Request & Return Messages | Backend Viewing API | `GET /api/messages` | HTTP `200 OK` & chronological messages list |
+| **26** | Reject Unauthenticated Deletion Request | Account Deletion API | `DELETE /api/users` | HTTP `401 Unauthorized` |
+| **27** | Reject Missing user_id Parameter | Account Deletion API | `DELETE /api/users` | HTTP `400 Bad Request` |
+| **28** | Reject Invalid UUID user_id Parameter | Account Deletion API | `DELETE /api/users` | HTTP `400 Bad Request` |
+| **29** | Reject Non-Existent User ID | Account Deletion API | `DELETE /api/users` | HTTP `404 Not Found` / `403 Forbidden` |
+| **30** | Accept Valid Deletion & Purge Supabase Auth | Account Deletion API | `DELETE /api/users` | HTTP `200 OK` (Waypoints deleted, messages kept, auth purged) |
 
 ---
 
@@ -186,7 +191,7 @@ Tests can be executed in sequence using **"Run All Tests"** or individually usin
 - **Assertions:** Both profile updates succeed and reflect correctly in the database.
 
 #### 20. Request Account Deletion & Verify Block
-- **Purpose:** Tests GDPR/privacy compliance and account suspension workflows.
+- **Purpose:** Tests GDPR/privacy compliance and soft account suspension workflows.
 - **Workflow:**
   1. Calls `request_account_deletion` RPC to mark the account for deletion.
   2. Calls `get_email_status` RPC to check the account's active state.
@@ -231,9 +236,48 @@ Tests can be executed in sequence using **"Run All Tests"** or individually usin
 
 ---
 
+### Section 8: User Account Deletion API (`DELETE /api/users`)
+
+*Validates the Next.js API route handler according to the Administrator user story for receiving, validating, and applying permanent user account deletion requests in Supabase Auth.*
+
+#### 26. Reject Unauthenticated Deletion Request
+- **Purpose:** Ensures the account deletion endpoint is protected against anonymous requests.
+- **Workflow:** Sends `DELETE http://localhost:3000/api/users` without any `Authorization` header.
+- **Assertions:** The server responds with HTTP `401 Unauthorized` indicating authentication is required.
+
+#### 27. Reject Missing `user_id` Parameter
+- **Purpose:** Validates that incoming deletion requests explicitly target a user identifier.
+- **Workflow:** Sends an authenticated `DELETE http://localhost:3000/api/users` with an empty payload `{}`.
+- **Assertions:** The server responds with HTTP `400 Bad Request` stating that `'user_id'` is required.
+
+#### 28. Reject Invalid UUID `user_id` Parameter
+- **Purpose:** Prevents malformed identifiers from reaching the Supabase Auth Admin API.
+- **Workflow:** Sends an authenticated `DELETE http://localhost:3000/api/users` with `{ user_id: "invalid-not-a-uuid" }`.
+- **Assertions:** The server responds with HTTP `400 Bad Request` specifying that `'user_id'` must be a valid UUID.
+
+#### 29. Reject Non-Existent User ID
+- **Purpose:** Confirms the backend verifies target existence and enforces authorization bounds before attempting deletion.
+- **Workflow:** Sends an authenticated `DELETE http://localhost:3000/api/users` with `{ user_id: "00000000-0000-0000-0000-000000000000" }`.
+- **Assertions:** The server checks target existence / permissions and responds with HTTP `404 Not Found` or `403 Forbidden`.
+
+#### 30. Accept Valid Deletion & Purge Supabase Auth (Waypoints Deleted, Messages Kept)
+- **Purpose:** Tests the complete positive path for permanently deleting a user from `auth.users`, confirming that all hosted waypoints are removed while chat messages remain permanently preserved in the database for compliance and future chat history.
+- **Workflow:**
+  1. Provisions a disposable test user and creates an associated `UserData` profile record.
+  2. Creates a test waypoint hosted by the user and saves a test message attached to that waypoint.
+  3. Signs in as the disposable user to acquire a valid session JWT.
+  4. Sends an authenticated `DELETE http://localhost:3000/api/users` targeting the disposable user.
+  5. Asserts HTTP `200 OK` confirming successful deletion.
+  6. Verifies that the user's hosted waypoint was deleted from `public."Waypoints"`.
+  7. Verifies that the chat message was preserved in `public."Messages"` with intact content.
+  8. Attempts to log in with the deleted credentials and confirms authentication fails.
+- **Assertions:** HTTP `200 OK` returned, waypoint deleted, message retained, subsequent login rejected with invalid credentials.
+
+---
+
 ## Adding New Tests in the Future
 
-When adding a test (e.g., Test 26):
+When adding a test (e.g., Test 31):
 1. **Define Test Logic in `testing/client.js`:** Add a new `case <N>:` inside `executeSingleTest()`.
 2. **Add UI Element in `testing/index.html`:** Add a new `.test-row` with `<button class="btn-run-single" data-test="<N>">Run</button>` and `<span class="test-tag" id="status-<N>">idle</span>`.
 3. **Update Total Count:** Ensure the suite loop in `client.js` runs through the new total.
