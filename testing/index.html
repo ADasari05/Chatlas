@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chatlas Auth Test Client</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="/supabase.js"></script>
+  <script>
+    if (!window.supabase) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"><\/script>');
+    }
+  </script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-title">
+        <h1>Chatlas Auth Test Client</h1>
+        <p>Isolated test harness for Supabase backend credentials and RPCs</p>
+      </div>
+      <div class="connection-status" id="conn-container">
+        <span class="status-dot dot-amber" id="conn-dot"></span>
+        <span id="conn-badge">Connecting...</span>
+      </div>
+    </header>
+
+    <!-- Session Status Bar -->
+    <div class="status-bar">
+      <div class="status-group">
+        <div class="status-field">Status: <strong id="auth-status-text">Logged Out</strong></div>
+        <div class="status-field">User ID: <strong id="auth-user-id">None</strong></div>
+        <div class="status-field">Account: <strong id="auth-user-details">—</strong></div>
+        <div class="status-field">Region: <strong id="auth-user-region">—</strong></div>
+      </div>
+      <div class="status-actions">
+        <button id="btn-refresh-session" class="btn-ghost">Refresh Session</button>
+        <button id="btn-sign-out" class="btn-ghost" disabled>Sign Out</button>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="grid">
+      <!-- Left Panel: Manual Authentication -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Manual Credentials</div>
+        </div>
+        <div class="panel-desc">Interactive actions for signing up, signing in, and editing credentials.</div>
+
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="tab-signup">Sign Up</button>
+          <button class="tab-btn" data-tab="tab-signin">Sign In</button>
+          <button class="tab-btn" data-tab="tab-profile">Profile</button>
+          <button class="tab-btn" data-tab="tab-danger">Danger Zone</button>
+        </div>
+
+        <!-- Tab 1: Sign Up -->
+        <div id="tab-signup" class="tab-content active">
+          <form id="form-signup" onsubmit="event.preventDefault();">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="signup-email">Email</label>
+                <input type="email" id="signup-email" placeholder="user@example.com" required>
+              </div>
+              <div class="form-group">
+                <label for="signup-username">Username</label>
+                <input type="text" id="signup-username" placeholder="developer" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="signup-password">Password</label>
+                <input type="password" id="signup-password" placeholder="Min 6 characters" required>
+              </div>
+              <div class="form-group">
+                <label for="signup-region">Home Region</label>
+                <select id="signup-region">
+                  <option value="">Loading regions...</option>
+                </select>
+              </div>
+            </div>
+            <button id="btn-signup" class="btn-primary btn-block">Sign Up New User</button>
+          </form>
+        </div>
+
+        <!-- Tab 2: Sign In -->
+        <div id="tab-signin" class="tab-content">
+          <form id="form-signin" onsubmit="event.preventDefault();">
+            <div class="form-group">
+              <label for="signin-email">Email or Username</label>
+              <input type="text" id="signin-email" placeholder="user@example.com or username" required>
+            </div>
+            <div class="form-group">
+              <label for="signin-password">Password</label>
+              <input type="password" id="signin-password" placeholder="Password" required>
+            </div>
+            <button id="btn-signin" class="btn-primary btn-block">Sign In</button>
+          </form>
+        </div>
+
+        <!-- Tab 3: Profile Updates -->
+        <div id="tab-profile" class="tab-content">
+          <div class="form-group">
+            <label for="update-username-input">New Username</label>
+            <input type="text" id="update-username-input" placeholder="Enter updated username">
+            <button id="btn-update-username" class="btn-ghost btn-block">Update Username</button>
+          </div>
+          <div class="form-group" style="margin-top: 1rem;">
+            <label for="update-region-select">New Home Region</label>
+            <select id="update-region-select">
+              <option value="">Select region...</option>
+            </select>
+            <button id="btn-update-region" class="btn-ghost btn-block">Update Region</button>
+          </div>
+        </div>
+
+        <!-- Tab 4: Danger Zone -->
+        <div id="tab-danger" class="tab-content">
+          <div class="panel-desc" style="color: var(--text-muted); margin-bottom: 0.75rem;">
+            Calls <code>request_account_deletion</code> to mark the current logged-in account as disabled/pending deletion.
+          </div>
+          <button id="btn-delete-account" class="btn-danger btn-block">Request Account Deletion</button>
+        </div>
+      </div>
+
+      <!-- Right Panel: Automated Test Suite -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Automated Test Suite</div>
+          <button id="btn-run-all-tests" class="btn-primary btn-sm">Run All Tests</button>
+        </div>
+        <div class="panel-desc">Direct verification of Supabase auth, RPC endpoints, and database tables.</div>
+
+        <div class="test-list">
+          <div class="test-row">
+            <div>
+              <div class="test-title">1. Load Home Regions</div>
+              <div class="test-desc">Verifies get_home_regions RPC returns valid entries</div>
+            </div>
+            <span class="test-tag" id="status-1">idle</span>
+          </div>
+
+          <div class="test-row">
+            <div>
+              <div class="test-title">2. Check Username Availability</div>
+              <div class="test-desc">Verifies is_display_name_taken RPC distinguishes taken vs new</div>
+            </div>
+            <span class="test-tag" id="status-2">idle</span>
+          </div>
+
+          <div class="test-row">
+            <div>
+              <div class="test-title">3. Register New User</div>
+              <div class="test-desc">Calls auth.signUp and generates valid UUID</div>
+            </div>
+            <span class="test-tag" id="status-3">idle</span>
+          </div>
+
+          <div class="test-row">
+            <div>
+              <div class="test-title">4. UserData Profile Record Linking</div>
+              <div class="test-desc">Inserts UserData record matching user UUID</div>
+            </div>
+            <span class="test-tag" id="status-4">idle</span>
+          </div>
+
+          <div class="test-row">
+            <div>
+              <div class="test-title">5. Sign In Valid Credentials</div>
+              <div class="test-desc">Calls auth.signInWithPassword and confirms active JWT</div>
+            </div>
+            <span class="test-tag" id="status-5">idle</span>
+          </div>
+
+          <div class="test-row">
+            <div>
+              <div class="test-title">6. Reject Invalid Credentials</div>
+              <div class="test-desc">Confirms invalid password returns rejection error</div>
+            </div>
+            <span class="test-tag" id="status-6">idle</span>
+          </div>
+
+          <div class="test-row">
+            <div>
+              <div class="test-title">7. Modify Profile & Region</div>
+              <div class="test-desc">Calls update_username and update_region RPCs</div>
+            </div>
+            <span class="test-tag" id="status-7">idle</span>
+          </div>
+
+          <div class="test-row">
+            <div>
+              <div class="test-title">8. Request Deletion & Verify Block</div>
+              <div class="test-desc">Executes request_account_deletion and checks get_email_status</div>
+            </div>
+            <span class="test-tag" id="status-8">idle</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Event Log -->
+    <div class="log-panel">
+      <div class="log-header">
+        <div class="log-title">Event Log</div>
+        <button id="btn-clear-logs" class="btn-ghost btn-sm">Clear</button>
+      </div>
+      <div class="terminal" id="log-terminal">
+        <div class="log-entry">
+          <span class="log-time">[Init]</span> <span class="log-action">Connecting to Supabase client...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="client.js"></script>
+</body>
+</html>

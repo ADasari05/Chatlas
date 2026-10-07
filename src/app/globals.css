@@ -364,6 +364,13 @@
     border-radius: 6px;
 }
 
+.password-hint {
+    font-size: 12px;
+    color: #666;
+    margin: -4px 0 10px 2px;
+    text-align: left;
+}
+
 .close-button {
     cursor: pointer;
     position: absolute;

@@ -193,9 +193,24 @@ function Account(): React.JSX.Element {
         }
         setIsLoading(true);
         try {
+            let loginEmail = email.trim();
+
+            // If user entered a username (does not contain '@'), resolve to email via RPC
+            if (!loginEmail.includes('@')) {
+                const { data: resolvedEmail, error: resolveError } = await supabase.rpc('get_email_for_username', {
+                    check_username: loginEmail,
+                });
+
+                if (resolveError || !resolvedEmail) {
+                    setAccountSignInError('Invalid login credentials.');
+                    return;
+                }
+                loginEmail = resolvedEmail;
+            }
+
             const [signInResult, statusResult] = await Promise.all([
-                supabase.auth.signInWithPassword({ email, password }),
-                supabase.rpc('get_email_status', { check_email: email }).maybeSingle(),
+                supabase.auth.signInWithPassword({ email: loginEmail, password }),
+                supabase.rpc('get_email_status', { check_email: loginEmail }).maybeSingle(),
             ]);
 
             if (signInResult.error) {
@@ -222,6 +237,10 @@ function Account(): React.JSX.Element {
     const handleAccountCreation = async (): Promise<void> => {
         if(!email || !username || !password || !confirmPassword || !homeRegion) {
             setAccountCreationError('Please fill in all fields.');
+            return;
+        }
+        if (password.length < 6) {
+            setAccountCreationError('Password must be at least 6 characters.');
             return;
         }
         if (password !== confirmPassword) {
@@ -431,7 +450,7 @@ function Account(): React.JSX.Element {
                         <h2>Sign In</h2>
                         <input
                             type="text"
-                            placeholder="Email"
+                            placeholder="Email or Username"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                         />
@@ -482,6 +501,7 @@ function Account(): React.JSX.Element {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                         />
+                        <p className="password-hint">Password must be at least 6 characters</p>
                         <input
                             type="password"
                             placeholder="Confirm Password"
