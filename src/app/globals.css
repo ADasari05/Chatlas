@@ -572,44 +572,93 @@
 }
 
 .waypoint-chat {
-    position: fixed;
-    top: 20px;
-    right: 60px;
-    width: 300px;
-    height: 400px;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 360px;
     display: flex;
     flex-direction: column;
     background-color: white;
-    border-radius: 10px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: -4px 0 15px rgba(0, 0, 0, 0.25);
     z-index: 30;
+    animation: chat-slide-in 0.25s ease-out;
+}
+
+@keyframes chat-slide-in {
+    from {
+        transform: translateX(100%);
+    }
+    to {
+        transform: translateX(0);
+    }
 }
 
 .waypoint-chat-header {
     display: flex;
     justify-content: space-between;
-    padding: 10px;
-    border-bottom: 1px solid #ccc;
+    align-items: center;
+    padding: 15px;
+    background-color: #071b2e;
+    color: white;
     font-weight: bold;
+}
+
+.waypoint-chat-header button {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.1em;
+    cursor: pointer;
 }
 
 .waypoint-chat-messages {
     flex: 1;
     overflow-y: auto;
-    padding: 10px;
+    overflow-x: hidden;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background-color: #f2f4f7;
 }
 
 .waypoint-chat-message {
-    margin-bottom: 8px;
+    align-self: flex-start;
+    max-width: 80%;
+    overflow-wrap: anywhere;
+    padding: 8px 12px;
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.waypoint-chat-sender {
+    font-size: 0.8em;
+    font-weight: bold;
+    color: #555;
+    margin-bottom: 2px;
 }
 
 .waypoint-chat-input {
     display: flex;
-    gap: 5px;
-    padding: 10px;
-    border-top: 1px solid #ccc;
+    gap: 8px;
+    padding: 12px;
+    border-top: 1px solid #ddd;
 }
 
 .waypoint-chat-input input {
     flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 20px;
+}
+
+.waypoint-chat-input button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 20px;
+    background-color: #2b75f4;
+    color: white;
+    cursor: pointer;
 }

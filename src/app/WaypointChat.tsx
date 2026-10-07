@@ -105,12 +105,12 @@ function WaypointChat(): React.JSX.Element | null {
         <div className="waypoint-chat">
             <div className="waypoint-chat-header">
                 <span>Waypoint Chat</span>
-                <button onClick={closeChat}>X</button>
+                <button onClick={closeChat}>✕</button>
             </div>
             <div className="waypoint-chat-messages" ref={messagesRef}>
                 {messages.map((message) => (
                     <div key={message.id} className="waypoint-chat-message">
-                        <b>{message.sender_name ?? 'Unknown'}: </b>
+                        <div className="waypoint-chat-sender">{message.sender_name ?? 'Unknown'}</div>
                         {message.message_contents}
                     </div>
                 ))}

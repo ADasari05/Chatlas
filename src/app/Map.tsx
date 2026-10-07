@@ -106,7 +106,7 @@ async function loadWaypoints(map: mapboxgl.Map, visible: boolean): Promise<void>
     ]);
  
     if (mineError || othersError) {
-        console.error('Could not load waypoints');
+        console.error('Could not load waypoints', mineError, othersError);
         return;
     }
  
