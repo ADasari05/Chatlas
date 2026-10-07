@@ -28,7 +28,62 @@ def get_auth_response(email, password):
     # r.status_code = 200, 400, 403, etc
 
     return requests.post(database_auth, params=params, headers=headers, json=json_data)
- 
+
+
+# get the associated userdata with this user's auth_id, access_token
+# note: technically don't need to search up user's auth ID as well given that RLS already makes sure that authenticated users can only view themselves...
+def get_userdata(auth_id, access_token):
+    if access_token == None:
+        headers = {
+            'apikey': api_key
+        }
+    else:
+        headers = {
+            'apikey': api_key,
+            'Authorization': 'Bearer ' + access_token,
+        }
+
+    return requests.get(database_rest + 'UserData?select=*&user_auth_id=eq.' + auth_id, headers=headers)
+
+# same as above, but no "auth_id" needed.
+def get_userdata(access_token):
+    if access_token == None:
+        headers = {
+            'apikey': api_key
+        }
+    else:
+        headers = {
+            'apikey': api_key,
+            'Authorization': 'Bearer ' + access_token,
+        }
+
+    return requests.get(database_rest + 'UserData?select=*', headers=headers)
+
+
+# given an authenticated access token, acquire the associated user -- not auth! -- uuid.
+# returns 'None' if an error occured.
+def get_userdata_uuid(access_token):
+    if access_token == None:
+        headers = {
+            'apikey': api_key
+        }
+    else:
+        headers = {
+            'apikey': api_key,
+            'Authorization': 'Bearer ' + access_token,
+        }
+
+    response = requests.get(database_rest + 'UserData?select=*', headers=headers)
+    
+    if response.status_code == 200 and len(response.json()) > 0:
+        
+        # successfuly
+        return response.json()[0]["id"]
+    else:
+        # print err
+        print("get_userdata_uuid: Err: request failed: \n" + str(response.json()))
+        return None
+
  
 # typical "GET" response and stuff
 def get_response(table_with_sql, access_token):
@@ -45,8 +100,9 @@ def get_response(table_with_sql, access_token):
 
     return requests.get(database_rest + table_with_sql, headers=headers)
     
+
 # typical "POST" response and stuff -- TODO
-def post_response(table_with_sql, access_token):
+def post_response(table, access_token, json_data):
     
     if access_token == None:
         headers = {
@@ -62,5 +118,5 @@ def post_response(table_with_sql, access_token):
             'Authorization': 'Bearer ' + access_token,
         }
 
-    return requests.get(database_rest + table_with_sql, headers=headers)
+    return requests.post(database_rest + table, headers=headers, json=json_data)
     
