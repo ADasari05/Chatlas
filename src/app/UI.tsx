@@ -6,6 +6,7 @@ import InfoPanel, { OpenPanel } from './InfoPanel';
 import SearchBar from './SearchBar';
 import Account from './Account';
 import AdminDashboard from './AdminDashboard';
+import WaypointChat from './WaypointChat';
 import { createClient } from '@/utils/supabase/client';
 
 interface MenuOption {
@@ -105,6 +106,7 @@ const UI: React.FC = () => {
                 <SearchBar onLocationSelected={handleLocationSelected} />
                 <Map selectedLocation={selectedLocation} onLocationSelected={handleLocationSelected} />
                 <InfoPanel selectedLocation={selectedLocation} />
+                <WaypointChat />
             </div>
         </div>
     );

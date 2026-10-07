@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { handleMapLogout } from './Map';
+import { deleteAllOwnWaypoints, handleMapLogin, handleMapLogout } from './Map';
 import { createClient } from '@/utils/supabase/client';
 
 interface AccountOption {
@@ -229,6 +229,7 @@ function Account(): React.JSX.Element {
             setLoginStatus(true);
             setIsLoginPopupOpen(false);
             openSignInSuccessPopup();
+            handleMapLogin();
         } finally {
             setIsLoading(false);
         }
@@ -312,6 +313,7 @@ function Account(): React.JSX.Element {
             resetForm();
             setIsAccountCreationPopupOpen(false);
             openSignInSuccessPopup();
+            handleMapLogin();
         }
     };
 
@@ -335,6 +337,7 @@ function Account(): React.JSX.Element {
         }
 
         setIsAccountDeletionPopupOpen(false);
+        await deleteAllOwnWaypoints();
         await handleSignOut();
     };
 
