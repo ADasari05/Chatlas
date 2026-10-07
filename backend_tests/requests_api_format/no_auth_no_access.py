@@ -19,7 +19,7 @@ def main():
     print("\nRequesting Messages Data: \n" + str(response.json()));
     
     response = get_response('ChatConnections?select=*', None)
-    print("\nRequesting Messages Data: \n" + str(response.json()));
+    print("\nRequesting ChatConnections Data: \n" + str(response.json()));
 
 
     print("\nChecking: can we insert data w/o logging in?")
