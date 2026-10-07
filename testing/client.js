@@ -221,6 +221,7 @@
       if (data.user) {
         const { error: insertError } = await supabaseClient.from('UserData').insert({
           id: data.user.id,
+          user_auth_id: data.user.id,
           user_name: username,
           home_region: homeRegion
         });
@@ -416,10 +417,11 @@
         return log('Validation Error', 'Waypoint ID and message contents are required.', true);
       }
 
-      log('Saving Message to Waypoint', { waypointId: Number(waypointId), contents });
+      const senderId = currentSession?.user?.id || null;
+      log('Saving Message to Waypoint', { waypointId: Number(waypointId), contents, senderUserId: senderId });
       try {
         const { data, error } = await supabaseClient.from('Messages').insert({
-          sender_user_id: currentSession?.user?.id || null,
+          sender_user_id: senderId,
           waypoint_id: Number(waypointId),
           message_contents: contents,
           timestamp: new Date().toISOString()
@@ -435,6 +437,41 @@
         });
       } catch (err) {
         log('Save Message Error', err.message || err, true);
+      }
+    });
+  }
+
+  const btnSaveMessageApi = document.getElementById('btn-save-message-api');
+  if (btnSaveMessageApi) {
+    btnSaveMessageApi.addEventListener('click', async () => {
+      const waypointId = document.getElementById('msg-waypoint-id').value.trim();
+      const contents = document.getElementById('msg-contents').value;
+      if (!waypointId || !contents) {
+        return log('Validation Error', 'Waypoint ID and message contents are required.', true);
+      }
+      log('Sending Message via Next.js Backend API (POST /api/messages)', { waypointId, contents });
+      try {
+        const session = currentSession || (await supabaseClient.auth.getSession()).data.session;
+        const token = session?.access_token;
+        const res = await fetch('http://localhost:3000/api/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            waypoint_id: Number(waypointId),
+            message_contents: contents
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          log(`Backend API Error (${res.status})`, data.error || data, true);
+        } else {
+          log(`Backend API Success (${res.status})`, data);
+        }
+      } catch (err) {
+        log('Backend API Request Failed', err.message || err, true);
       }
     });
   }
@@ -468,7 +505,8 @@
     { id: 'cat-registration', scoreId: 'score-cat-2', testIds: [4, 5] },
     { id: 'cat-auth', scoreId: 'score-cat-3', testIds: [6, 7, 8] },
     { id: 'cat-messages', scoreId: 'score-cat-4', testIds: [9, 10] },
-    { id: 'cat-lifecycle', scoreId: 'score-cat-5', testIds: [11, 12] }
+    { id: 'cat-api-validation', scoreId: 'score-cat-5', testIds: [11, 12, 13, 14, 15, 16, 17, 18] },
+    { id: 'cat-lifecycle', scoreId: 'score-cat-6', testIds: [19, 20] }
   ];
 
   const testResults = {};
@@ -550,260 +588,593 @@
     });
   }
 
+  // --- Individual Test & Suite Runner ---
+
+  let isTestRunning = false;
+
+  async function getTestFixture(requirement) {
+    const ts = Date.now();
+    const testUser = `test_runner_${ts}`;
+    const testEmail = `test_${ts}@chatlas.local`;
+    const testPassword = `Pass#${ts}!`;
+    let registeredUserId = null;
+    let availableRegion = 'United States';
+
+    if (requirement === 'none') {
+      return { timestamp: ts, testUser, testEmail, testPassword, registeredUserId, availableRegion };
+    }
+
+    try {
+      const { data: regions } = await supabaseClient.rpc('get_home_regions');
+      if (Array.isArray(regions) && regions.length > 0) availableRegion = regions[0];
+    } catch (_) {}
+
+    const { data: signUpData, error: signUpErr } = await supabaseClient.auth.signUp({
+      email: testEmail,
+      password: testPassword,
+      options: { data: { display_name: testUser } }
+    });
+    if (signUpErr) throw signUpErr;
+    if (!signUpData.user?.id) throw new Error('No user ID returned from signUp fixture');
+    registeredUserId = signUpData.user.id;
+
+    if (requirement === 'full_user') {
+      const { error: profileErr } = await supabaseClient.from('UserData').insert({
+        id: registeredUserId,
+        user_auth_id: registeredUserId,
+        user_name: testUser,
+        home_region: availableRegion
+      });
+      if (profileErr) throw profileErr;
+    }
+
+    return { timestamp: ts, testUser, testEmail, testPassword, registeredUserId, availableRegion };
+  }
+
+  async function executeSingleTest(testNum, ctx = null) {
+    if (!supabaseClient) throw new Error('Supabase client not initialized');
+
+    setTestStatus(testNum, 'RUNNING', null);
+
+    const singleBtn = document.querySelector(`.btn-run-single[data-test="${testNum}"]`);
+    if (singleBtn) {
+      singleBtn.disabled = true;
+      singleBtn.textContent = '...';
+    }
+
+    try {
+      switch (testNum) {
+        case 1: {
+          const { data, error } = await supabaseClient.rpc('get_home_regions');
+          if (error) throw error;
+          if (!Array.isArray(data) || data.length === 0) throw new Error('Regions array is empty');
+          if (ctx) ctx.availableRegion = data[0];
+          setTestStatus(1, 'PASSED', true);
+          log('Test 1 Passed', `Loaded ${data.length} regions. Sample: ${data[0]}`);
+          break;
+        }
+
+        case 2: {
+          const testUser = ctx?.testUser || `test_avail_${Date.now()}`;
+          const { data: taken, error } = await supabaseClient.rpc('is_display_name_taken', { check_name: testUser });
+          if (error) throw error;
+          if (taken !== false) throw new Error(`Expected brand new user "${testUser}" to not be taken`);
+          setTestStatus(2, 'PASSED', true);
+          log('Test 2 Passed', `Verified username "${testUser}" is available`);
+          break;
+        }
+
+        case 3: {
+          const ts = Date.now();
+          const { error } = await supabaseClient.auth.signUp({
+            email: `short_pw_${ts}@chatlas.local`,
+            password: '123'
+          });
+          if (!error) throw new Error('Expected Supabase to reject password under 6 characters');
+          setTestStatus(3, 'PASSED', true);
+          log('Test 3 Passed', `Rejected short password (< 6 chars) as expected: ${error.message}`);
+          break;
+        }
+
+        case 4: {
+          const ts = Date.now();
+          const testUser = ctx?.testUser || `test_runner_${ts}`;
+          const testEmail = ctx?.testEmail || `test_${ts}@chatlas.local`;
+          const testPassword = ctx?.testPassword || `Pass#${ts}!`;
+          const { data, error } = await supabaseClient.auth.signUp({
+            email: testEmail,
+            password: testPassword,
+            options: { data: { display_name: testUser } }
+          });
+          if (error) throw error;
+          if (!data.user?.id) throw new Error('No user ID returned from signUp');
+          if (ctx) ctx.registeredUserId = data.user.id;
+          setTestStatus(4, 'PASSED', true);
+          log('Test 4 Passed', `Registered user ID: ${data.user.id}`);
+          break;
+        }
+
+        case 5: {
+          let fixture = ctx;
+          if (!fixture) {
+            fixture = await getTestFixture('auth_user');
+          } else if (!fixture.registeredUserId) {
+            throw new Error('Skipping: Test 4 failed');
+          }
+          const { error: insertErr } = await supabaseClient.from('UserData').insert({
+            id: fixture.registeredUserId,
+            user_auth_id: fixture.registeredUserId,
+            user_name: fixture.testUser,
+            home_region: fixture.availableRegion || 'United States'
+          });
+          if (insertErr) throw insertErr;
+          setTestStatus(5, 'PASSED', true);
+          log('Test 5 Passed', `UserData profile linked for ID: ${fixture.registeredUserId}`);
+          break;
+        }
+
+        case 6: {
+          let fixture = ctx;
+          if (!fixture) {
+            fixture = await getTestFixture('auth_user');
+          }
+          const { data, error } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (error) throw error;
+          if (!data.session?.access_token) throw new Error('No JWT access token received');
+          setTestStatus(6, 'PASSED', true);
+          log('Test 6 Passed', 'Valid login via email succeeded with active JWT session');
+          break;
+        }
+
+        case 7: {
+          let fixture = ctx;
+          if (!fixture) {
+            fixture = await getTestFixture('full_user');
+          }
+          const { data: resolvedEmail, error: rpcErr } = await supabaseClient.rpc('get_email_for_username', {
+            check_username: fixture.testUser
+          });
+          if (rpcErr) throw rpcErr;
+          if (!resolvedEmail || resolvedEmail.toLowerCase() !== fixture.testEmail.toLowerCase()) {
+            throw new Error(`get_email_for_username returned unexpected email: ${resolvedEmail}`);
+          }
+          const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
+            email: resolvedEmail,
+            password: fixture.testPassword
+          });
+          if (signInErr) throw signInErr;
+          if (!signInData.session?.access_token) throw new Error('No JWT access token received on username login');
+          setTestStatus(7, 'PASSED', true);
+          log('Test 7 Passed', `Resolved username "${fixture.testUser}" to "${resolvedEmail}" and signed in successfully`);
+          break;
+        }
+
+        case 8: {
+          let fixture = ctx;
+          if (!fixture) {
+            fixture = await getTestFixture('auth_user');
+          }
+          const { error } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: 'DefinitelyWrongPassword123!'
+          });
+          if (!error) throw new Error('Expected login with wrong password to fail');
+          setTestStatus(8, 'PASSED', true);
+          log('Test 8 Passed', `Rejected wrong password as expected: ${error.message}`);
+          break;
+        }
+
+        case 9: {
+          let fixture = ctx;
+          if (!fixture) {
+            fixture = await getTestFixture('full_user');
+          } else if (!fixture.registeredUserId) {
+            throw new Error('Skipping: Test 4 failed');
+          }
+          const ts = Date.now();
+          let localWpId = null;
+          let localMsgId = null;
+          try {
+            const { data: waypoint, error: wpErr } = await supabaseClient.from('Waypoints').insert({
+              host_user: fixture.registeredUserId,
+              longitude: -86.913,
+              latitude: 40.424
+            }).select().single();
+            if (wpErr) throw wpErr;
+            localWpId = waypoint.id;
+            if (ctx) ctx.testWaypointId = localWpId;
+
+            const { data: message, error: msgErr } = await supabaseClient.from('Messages').insert({
+              sender_user_id: fixture.registeredUserId,
+              waypoint_id: localWpId,
+              message_contents: `Automated verification message ${ts}`
+            }).select().single();
+            if (msgErr) throw msgErr;
+            localMsgId = message.id;
+
+            try { await supabaseClient.from('Messages').delete().eq('id', localMsgId); } catch (_) {}
+            if (!ctx) {
+              try { await supabaseClient.from('Waypoints').delete().eq('id', localWpId); } catch (_) {}
+            }
+            setTestStatus(9, 'PASSED', true);
+            log('Test 9 Passed', `Created Waypoint #${localWpId} and saved Message #${localMsgId}`);
+          } catch (err) {
+            if (localMsgId) {
+              try { await supabaseClient.from('Messages').delete().eq('id', localMsgId); } catch (_) {}
+            }
+            if (!ctx && localWpId) {
+              try { await supabaseClient.from('Waypoints').delete().eq('id', localWpId); } catch (_) {}
+            }
+            throw err;
+          }
+          break;
+        }
+
+        case 10: {
+          let fixture = ctx;
+          if (!fixture) {
+            fixture = await getTestFixture('full_user');
+          } else if (!fixture.registeredUserId) {
+            throw new Error('Skipping: Test 4 failed');
+          }
+          try {
+            const { error: fkErr } = await supabaseClient.from('Messages').insert({
+              sender_user_id: fixture.registeredUserId,
+              waypoint_id: 999999999,
+              message_contents: 'This must fail FK constraint'
+            }).select();
+            if (!fkErr) throw new Error('Expected foreign key error when inserting invalid waypoint_id');
+            setTestStatus(10, 'PASSED', true);
+            log('Test 10 Passed', `Foreign key constraint verified (invalid waypoint ID rejected: ${fkErr.code})`);
+          } finally {
+            if (ctx && ctx.testWaypointId) {
+              try { await supabaseClient.from('Waypoints').delete().eq('id', ctx.testWaypointId); } catch (_) {}
+              ctx.testWaypointId = null;
+            }
+          }
+          break;
+        }
+
+        // --- Section 5: Backend Messages API & Malformed Requests (POST /api/messages) ---
+
+        // Test 11: Reject Unauthenticated Request
+        case 11: {
+          const res = await fetch('http://localhost:3000/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ waypoint_id: 1, message_contents: 'Test' })
+          });
+          const data = await res.json();
+          if (res.status !== 401) {
+            throw new Error(`Expected 401 Unauthorized, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(11, 'PASSED', true);
+          log('Test 11 Passed', `Backend rejected unauthenticated request with 401: "${data.error}"`);
+          break;
+        }
+
+        // Test 12: Reject Missing waypoint_id
+        case 12: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const res = await fetch('http://localhost:3000/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ message_contents: 'Missing waypoint ID' })
+          });
+          const data = await res.json();
+          if (res.status !== 400) {
+            throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(12, 'PASSED', true);
+          log('Test 12 Passed', `Backend rejected missing waypoint_id with 400: "${data.error}"`);
+          break;
+        }
+
+        // Test 13: Reject Non-Numeric waypoint_id
+        case 13: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const res = await fetch('http://localhost:3000/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ waypoint_id: 'not_an_id', message_contents: 'Invalid waypoint' })
+          });
+          const data = await res.json();
+          if (res.status !== 400) {
+            throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(13, 'PASSED', true);
+          log('Test 13 Passed', `Backend rejected non-numeric waypoint_id with 400: "${data.error}"`);
+          break;
+        }
+
+        // Test 14: Reject Missing message_contents
+        case 14: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const res = await fetch('http://localhost:3000/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ waypoint_id: 1 })
+          });
+          const data = await res.json();
+          if (res.status !== 400) {
+            throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(14, 'PASSED', true);
+          log('Test 14 Passed', `Backend rejected missing message_contents with 400: "${data.error}"`);
+          break;
+        }
+
+        // Test 15: Reject Empty / Whitespace-Only Message
+        case 15: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const res = await fetch('http://localhost:3000/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ waypoint_id: 1, message_contents: '     ' })
+          });
+          const data = await res.json();
+          if (res.status !== 400) {
+            throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(15, 'PASSED', true);
+          log('Test 15 Passed', `Backend rejected whitespace-only message with 400: "${data.error}"`);
+          break;
+        }
+
+        // Test 16: Reject Excessively Long Message
+        case 16: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const longMessage = 'A'.repeat(2001);
+          const res = await fetch('http://localhost:3000/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ waypoint_id: 1, message_contents: longMessage })
+          });
+          const data = await res.json();
+          if (res.status !== 400) {
+            throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(16, 'PASSED', true);
+          log('Test 16 Passed', `Backend rejected message > 2000 chars with 400: "${data.error}"`);
+          break;
+        }
+
+        // Test 17: Reject Non-Existent Waypoint ID
+        case 17: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          const res = await fetch('http://localhost:3000/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ waypoint_id: 999999999, message_contents: 'Valid message content' })
+          });
+          const data = await res.json();
+          if (res.status !== 404) {
+            throw new Error(`Expected 404 Not Found, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+          }
+          setTestStatus(17, 'PASSED', true);
+          log('Test 17 Passed', `Backend rejected non-existent waypoint with 404: "${data.error}"`);
+          break;
+        }
+
+        // Test 18: Accept Valid Request & Persist Message
+        case 18: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (authErr) throw authErr;
+          const token = authData.session.access_token;
+
+          // Create temporary waypoint
+          const { data: wp, error: wpErr } = await supabaseClient.from('Waypoints').insert({
+            host_user: fixture.registeredUserId,
+            longitude: -86.913,
+            latitude: 40.424
+          }).select().single();
+          if (wpErr) throw wpErr;
+
+          let createdMsgId = null;
+          try {
+            const res = await fetch('http://localhost:3000/api/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({
+                waypoint_id: wp.id,
+                message_contents: 'Automated valid backend message test'
+              })
+            });
+            const data = await res.json();
+            if (res.status !== 201 || !data.success || !data.data?.id) {
+              throw new Error(`Expected 201 Created with saved message ID, got HTTP ${res.status}: ${JSON.stringify(data)}`);
+            }
+            createdMsgId = data.data.id;
+
+            // Verify in PostgreSQL Messages table
+            const { data: fetched, error: fetchErr } = await supabaseClient.from('Messages').select('*').eq('id', createdMsgId).single();
+            if (fetchErr || !fetched) throw new Error('Message was not found in PostgreSQL Messages table');
+
+            setTestStatus(18, 'PASSED', true);
+            log('Test 18 Passed', `Valid message processed (HTTP 201 Created). Stored as Message #${createdMsgId}`);
+          } finally {
+            if (createdMsgId) {
+              try { await supabaseClient.from('Messages').delete().eq('id', createdMsgId); } catch (_) {}
+            }
+            try { await supabaseClient.from('Waypoints').delete().eq('id', wp.id); } catch (_) {}
+          }
+          break;
+        }
+
+        // --- Section 6: Account Lifecycle & Security ---
+
+        // Test 19: Modify Profile & Region
+        case 19: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { error: signInErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (signInErr) throw signInErr;
+
+          const updatedName = `${fixture.testUser}_mod`;
+          const { error: updateErr } = await supabaseClient.rpc('update_username', { new_name: updatedName });
+          if (updateErr) throw updateErr;
+
+          const region = fixture.availableRegion || 'United States';
+          const { error: regionErr } = await supabaseClient.rpc('update_region', { new_region: region });
+          if (regionErr) throw regionErr;
+
+          setTestStatus(19, 'PASSED', true);
+          log('Test 19 Passed', `Updated username to "${updatedName}" and confirmed region "${region}"`);
+          break;
+        }
+
+        // Test 20: Request Deletion & Block
+        case 20: {
+          let fixture = ctx || await getTestFixture('full_user');
+          const { error: signInErr } = await supabaseClient.auth.signInWithPassword({
+            email: fixture.testEmail,
+            password: fixture.testPassword
+          });
+          if (signInErr) throw signInErr;
+
+          const { error: delErr } = await supabaseClient.rpc('request_account_deletion');
+          if (delErr) throw delErr;
+
+          const { data: statusData, error: statusErr } = await supabaseClient.rpc('get_email_status', {
+            check_email: fixture.testEmail
+          }).maybeSingle();
+          if (statusErr) throw statusErr;
+          if (!statusData?.disabled) throw new Error('Expected email status to have disabled=true after deletion request');
+
+          await supabaseClient.auth.signOut();
+          setTestStatus(20, 'PASSED', true);
+          log('Test 20 Passed', 'Account deletion requested and disabled status verified in backend');
+          break;
+        }
+
+        default:
+          throw new Error(`Unknown test number: ${testNum}`);
+      }
+    } catch (e) {
+      setTestStatus(testNum, 'FAILED', false);
+      log(`Test ${testNum} Failed`, e.message, true);
+    } finally {
+      if (singleBtn) {
+        singleBtn.disabled = false;
+        singleBtn.textContent = 'Run';
+      }
+    }
+  }
+
+  // Wire individual test buttons
+  document.querySelectorAll('.btn-run-single').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (isTestRunning) {
+        return log('Suite Busy', 'A test is currently running. Please wait.');
+      }
+      const testNum = parseInt(btn.getAttribute('data-test'), 10);
+      if (isNaN(testNum)) return;
+      isTestRunning = true;
+      try {
+        log(`Test ${testNum}`, `Executing test ${testNum} individually...`);
+        await executeSingleTest(testNum);
+      } finally {
+        isTestRunning = false;
+      }
+    });
+  });
+
+  // Wire "Run All Tests" button
   const btnRunTests = document.getElementById('btn-run-all-tests');
   if (btnRunTests) {
     btnRunTests.addEventListener('click', async () => {
+      if (isTestRunning) {
+        return log('Suite Busy', 'A test is currently running. Please wait.');
+      }
       if (!supabaseClient) return log('Error', 'Client not initialized', true);
-      log('Automated Auth & Database Suite', 'Starting 12 verification tests...');
-      const timestamp = Date.now();
-      const testUser = `test_runner_${timestamp}`;
-      const testEmail = `test_${timestamp}@chatlas.local`;
-      const testPassword = `Pass#${timestamp}`;
-      let registeredUserId = null;
-      let availableRegion = 'United States';
+      isTestRunning = true;
+      btnRunTests.disabled = true;
+      btnRunTests.textContent = 'Running...';
+      const allSingleBtns = document.querySelectorAll('.btn-run-single');
+      allSingleBtns.forEach(b => b.disabled = true);
 
-      for (let i = 1; i <= 12; i++) {
+      log('Automated Auth & Database Suite', 'Starting 20 verification tests...');
+      try { await supabaseClient.auth.signOut(); } catch (_) {}
+      const timestamp = Date.now();
+      const suiteCtx = {
+        timestamp,
+        testUser: `test_runner_${timestamp}`,
+        testEmail: `test_${timestamp}@chatlas.local`,
+        testPassword: `Pass#${timestamp}!`,
+        registeredUserId: null,
+        availableRegion: 'United States',
+        testWaypointId: null
+      };
+
+      for (let i = 1; i <= 20; i++) {
         testResults[i] = null;
         setTestStatus(i, 'WAITING', null);
       }
       updateCategoryScores();
 
-      // --- Test 1: get_home_regions ---
       try {
-        setTestStatus(1, 'RUNNING', null);
-        const { data, error } = await supabaseClient.rpc('get_home_regions');
-        if (error) throw error;
-        if (!Array.isArray(data) || data.length === 0) throw new Error('Regions array is empty');
-        availableRegion = data[0];
-        setTestStatus(1, 'PASSED', true);
-        log('Test 1 Passed', `Loaded ${data.length} regions. Sample: ${availableRegion}`);
-      } catch (e) {
-        setTestStatus(1, 'FAILED', false);
-        log('Test 1 Failed', e.message, true);
-      }
-
-      // --- Test 2: is_display_name_taken ---
-      try {
-        setTestStatus(2, 'RUNNING', null);
-        const { data: taken, error } = await supabaseClient.rpc('is_display_name_taken', { check_name: testUser });
-        if (error) throw error;
-        if (taken !== false) throw new Error(`Expected brand new user "${testUser}" to not be taken`);
-        setTestStatus(2, 'PASSED', true);
-        log('Test 2 Passed', `Verified username "${testUser}" is available`);
-      } catch (e) {
-        setTestStatus(2, 'FAILED', false);
-        log('Test 2 Failed', e.message, true);
-      }
-
-      // --- Test 3: Reject Short Password (< 6 chars) ---
-      try {
-        setTestStatus(3, 'RUNNING', null);
-        const shortPassword = '123';
-        const { error } = await supabaseClient.auth.signUp({
-          email: `short_pw_${timestamp}@chatlas.local`,
-          password: shortPassword
-        });
-        if (!error) {
-          throw new Error('Expected Supabase to reject password under 6 characters');
+        for (let i = 1; i <= 20; i++) {
+          await executeSingleTest(i, suiteCtx);
         }
-        setTestStatus(3, 'PASSED', true);
-        log('Test 3 Passed', `Rejected short password (< 6 chars) as expected: ${error.message}`);
-      } catch (e) {
-        setTestStatus(3, 'FAILED', false);
-        log('Test 3 Failed', e.message, true);
+        log('Completed Suite', 'All 20 tests finished execution.');
+      } finally {
+        isTestRunning = false;
+        btnRunTests.disabled = false;
+        btnRunTests.textContent = 'Run All Tests';
+        allSingleBtns.forEach(b => b.disabled = false);
       }
-
-      // --- Test 4: Register New User ---
-      try {
-        setTestStatus(4, 'RUNNING', null);
-        const { data, error } = await supabaseClient.auth.signUp({
-          email: testEmail,
-          password: testPassword,
-          options: { data: { display_name: testUser } }
-        });
-        if (error) throw error;
-        if (!data.user?.id) throw new Error('No user ID returned from signUp');
-        registeredUserId = data.user.id;
-        setTestStatus(4, 'PASSED', true);
-        log('Test 4 Passed', `Registered user ID: ${registeredUserId}`);
-      } catch (e) {
-        setTestStatus(4, 'FAILED', false);
-        log('Test 4 Failed', e.message, true);
-      }
-
-      // --- Test 5: UserData Table Profile ---
-      try {
-        setTestStatus(5, 'RUNNING', null);
-        if (!registeredUserId) throw new Error('Skipping: Test 4 failed');
-        const { error: insertErr } = await supabaseClient.from('UserData').insert({
-          id: registeredUserId,
-          user_name: testUser,
-          home_region: availableRegion
-        });
-        if (insertErr) throw insertErr;
-        setTestStatus(5, 'PASSED', true);
-        log('Test 5 Passed', `UserData profile linked for ID: ${registeredUserId}`);
-      } catch (e) {
-        setTestStatus(5, 'FAILED', false);
-        log('Test 5 Failed', e.message, true);
-      }
-
-      // --- Test 6: Sign In With Email ---
-      try {
-        setTestStatus(6, 'RUNNING', null);
-        const { data, error } = await supabaseClient.auth.signInWithPassword({
-          email: testEmail,
-          password: testPassword
-        });
-        if (error) throw error;
-        if (!data.session?.access_token) throw new Error('No JWT access token received');
-        setTestStatus(6, 'PASSED', true);
-        log('Test 6 Passed', 'Valid login via email succeeded with active JWT session');
-      } catch (e) {
-        setTestStatus(6, 'FAILED', false);
-        log('Test 6 Failed', e.message, true);
-      }
-
-      // --- Test 7: Sign In With Username ---
-      try {
-        setTestStatus(7, 'RUNNING', null);
-        const { data: resolvedEmail, error: rpcErr } = await supabaseClient.rpc('get_email_for_username', {
-          check_username: testUser
-        });
-        if (rpcErr) throw rpcErr;
-        if (!resolvedEmail || resolvedEmail.toLowerCase() !== testEmail.toLowerCase()) {
-          throw new Error(`get_email_for_username returned unexpected email: ${resolvedEmail}`);
-        }
-
-        const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
-          email: resolvedEmail,
-          password: testPassword
-        });
-        if (signInErr) throw signInErr;
-        if (!signInData.session?.access_token) throw new Error('No JWT access token received on username login');
-
-        setTestStatus(7, 'PASSED', true);
-        log('Test 7 Passed', `Resolved username "${testUser}" to "${resolvedEmail}" and signed in successfully`);
-      } catch (e) {
-        setTestStatus(7, 'FAILED', false);
-        log('Test 7 Failed', e.message, true);
-      }
-
-      // --- Test 8: Invalid Password Rejection ---
-      try {
-        setTestStatus(8, 'RUNNING', null);
-        const { error } = await supabaseClient.auth.signInWithPassword({
-          email: testEmail,
-          password: 'DefinitelyWrongPassword123!'
-        });
-        if (!error) throw new Error('Expected login with wrong password to fail');
-        setTestStatus(8, 'PASSED', true);
-        log('Test 8 Passed', `Rejected wrong password as expected: ${error.message}`);
-      } catch (e) {
-        setTestStatus(8, 'FAILED', false);
-        log('Test 8 Failed', e.message, true);
-      }
-
-      // --- Test 9: Save Message to Waypoint ---
-      let testWaypointId = null;
-      let testMessageId = null;
-      try {
-        setTestStatus(9, 'RUNNING', null);
-        if (!registeredUserId) throw new Error('Skipping: Test 4 failed');
-
-        const { data: waypoint, error: wpErr } = await supabaseClient.from('Waypoints').insert({
-          host_user: registeredUserId,
-          longitude: -86.913,
-          latitude: 40.424
-        }).select().single();
-        if (wpErr) throw wpErr;
-        testWaypointId = waypoint.id;
-
-        const testPayload = `Automated verification message ${timestamp}`;
-        const { data: message, error: msgErr } = await supabaseClient.from('Messages').insert({
-          sender_user_id: registeredUserId,
-          waypoint_id: testWaypointId,
-          message_contents: testPayload
-        }).select().single();
-        if (msgErr) throw msgErr;
-        testMessageId = message.id;
-
-        try { await supabaseClient.from('Messages').delete().eq('id', testMessageId); } catch (_) {}
-
-        setTestStatus(9, 'PASSED', true);
-        log('Test 9 Passed', `Created Waypoint #${testWaypointId} and saved Message #${testMessageId}`);
-      } catch (e) {
-        if (testMessageId) {
-          try { await supabaseClient.from('Messages').delete().eq('id', testMessageId); } catch (_) {}
-        }
-        setTestStatus(9, 'FAILED', false);
-        log('Test 9 Failed', e.message, true);
-      }
-
-      // --- Test 10: Enforce Waypoint Foreign Key Constraint ---
-      try {
-        setTestStatus(10, 'RUNNING', null);
-        if (!registeredUserId) throw new Error('Skipping: Test 4 failed');
-
-        const { error: fkErr } = await supabaseClient.from('Messages').insert({
-          sender_user_id: registeredUserId,
-          waypoint_id: 999999999,
-          message_contents: 'This must fail FK constraint'
-        }).select();
-        if (!fkErr) throw new Error('Expected foreign key error when inserting invalid waypoint_id');
-
-        if (testWaypointId) {
-          try { await supabaseClient.from('Waypoints').delete().eq('id', testWaypointId); } catch (_) {}
-        }
-
-        setTestStatus(10, 'PASSED', true);
-        log('Test 10 Passed', `Foreign key constraint verified (invalid waypoint ID rejected: ${fkErr.code})`);
-      } catch (e) {
-        if (testWaypointId) {
-          try { await supabaseClient.from('Waypoints').delete().eq('id', testWaypointId); } catch (_) {}
-        }
-        setTestStatus(10, 'FAILED', false);
-        log('Test 10 Failed', e.message, true);
-      }
-
-      // --- Test 11: Modify Profile & Region ---
-      try {
-        setTestStatus(11, 'RUNNING', null);
-        await supabaseClient.auth.signInWithPassword({ email: testEmail, password: testPassword });
-        const updatedName = `${testUser}_mod`;
-        const { error: updateErr } = await supabaseClient.rpc('update_username', { new_name: updatedName });
-        if (updateErr) throw updateErr;
-
-        const { error: regionErr } = await supabaseClient.rpc('update_region', { new_region: availableRegion });
-        if (regionErr) throw regionErr;
-
-        setTestStatus(11, 'PASSED', true);
-        log('Test 11 Passed', `Updated username to "${updatedName}" and confirmed region "${availableRegion}"`);
-      } catch (e) {
-        setTestStatus(11, 'FAILED', false);
-        log('Test 11 Failed', e.message, true);
-      }
-
-      // --- Test 12: Request Deletion & Block ---
-      try {
-        setTestStatus(12, 'RUNNING', null);
-        await supabaseClient.auth.signInWithPassword({ email: testEmail, password: testPassword });
-        const { error: delErr } = await supabaseClient.rpc('request_account_deletion');
-        if (delErr) throw delErr;
-
-        const { data: statusData, error: statusErr } = await supabaseClient.rpc('get_email_status', { check_email: testEmail }).maybeSingle();
-        if (statusErr) throw statusErr;
-        if (!statusData?.disabled) throw new Error('Expected email status to have disabled=true after deletion request');
-
-        await supabaseClient.auth.signOut();
-        setTestStatus(12, 'PASSED', true);
-        log('Test 12 Passed', 'Account deletion requested and disabled status verified in backend');
-      } catch (e) {
-        setTestStatus(12, 'FAILED', false);
-        log('Test 12 Failed', e.message, true);
-      }
-
-      log('Completed Suite', 'All 12 tests finished execution.');
     });
   }
 

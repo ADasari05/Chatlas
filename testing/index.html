@@ -130,7 +130,8 @@
             <input type="text" id="msg-contents" placeholder="Enter message text...">
           </div>
           <div class="button-row">
-            <button id="btn-save-message" class="btn-primary" style="flex: 1;">Save Message</button>
+            <button id="btn-save-message" class="btn-primary" style="flex: 1;">Save (Direct DB)</button>
+            <button id="btn-save-message-api" class="btn-primary" style="flex: 1; background: #6366f1;">Send (Backend API)</button>
             <button id="btn-fetch-messages" class="btn-ghost" style="flex: 1;">Fetch Messages</button>
           </div>
           <div style="margin-top: 0.75rem;">
@@ -174,7 +175,10 @@
                   <div class="test-title">1. Load Home Regions</div>
                   <div class="test-desc">Verifies get_home_regions RPC returns valid entries</div>
                 </div>
-                <span class="test-tag" id="status-1">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="1" title="Run Test 1">Run</button>
+                  <span class="test-tag" id="status-1">idle</span>
+                </div>
               </div>
 
               <div class="test-row">
@@ -182,7 +186,10 @@
                   <div class="test-title">2. Check Username Availability</div>
                   <div class="test-desc">Verifies is_display_name_taken RPC distinguishes taken vs new</div>
                 </div>
-                <span class="test-tag" id="status-2">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="2" title="Run Test 2">Run</button>
+                  <span class="test-tag" id="status-2">idle</span>
+                </div>
               </div>
 
               <div class="test-row">
@@ -190,7 +197,10 @@
                   <div class="test-title">3. Reject Short Password (&lt; 6 chars)</div>
                   <div class="test-desc">Confirms passwords under 6 characters are rejected</div>
                 </div>
-                <span class="test-tag" id="status-3">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="3" title="Run Test 3">Run</button>
+                  <span class="test-tag" id="status-3">idle</span>
+                </div>
               </div>
             </div>
           </details>
@@ -210,7 +220,10 @@
                   <div class="test-title">4. Register New User</div>
                   <div class="test-desc">Calls auth.signUp and generates valid UUID</div>
                 </div>
-                <span class="test-tag" id="status-4">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="4" title="Run Test 4">Run</button>
+                  <span class="test-tag" id="status-4">idle</span>
+                </div>
               </div>
 
               <div class="test-row">
@@ -218,7 +231,10 @@
                   <div class="test-title">5. UserData Profile Record Linking</div>
                   <div class="test-desc">Inserts UserData record matching user UUID</div>
                 </div>
-                <span class="test-tag" id="status-5">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="5" title="Run Test 5">Run</button>
+                  <span class="test-tag" id="status-5">idle</span>
+                </div>
               </div>
             </div>
           </details>
@@ -238,7 +254,10 @@
                   <div class="test-title">6. Sign In With Email</div>
                   <div class="test-desc">Calls auth.signInWithPassword via email and confirms active JWT</div>
                 </div>
-                <span class="test-tag" id="status-6">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="6" title="Run Test 6">Run</button>
+                  <span class="test-tag" id="status-6">idle</span>
+                </div>
               </div>
 
               <div class="test-row">
@@ -246,7 +265,10 @@
                   <div class="test-title">7. Sign In With Username</div>
                   <div class="test-desc">Resolves email via get_email_for_username RPC and authenticates</div>
                 </div>
-                <span class="test-tag" id="status-7">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="7" title="Run Test 7">Run</button>
+                  <span class="test-tag" id="status-7">idle</span>
+                </div>
               </div>
 
               <div class="test-row">
@@ -254,7 +276,10 @@
                   <div class="test-title">8. Reject Invalid Credentials</div>
                   <div class="test-desc">Confirms invalid password returns rejection error</div>
                 </div>
-                <span class="test-tag" id="status-8">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="8" title="Run Test 8">Run</button>
+                  <span class="test-tag" id="status-8">idle</span>
+                </div>
               </div>
             </div>
           </details>
@@ -274,7 +299,10 @@
                   <div class="test-title">9. Save Message to Waypoint</div>
                   <div class="test-desc">Saves message linked to waypoint_id and sender_user_id</div>
                 </div>
-                <span class="test-tag" id="status-9">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="9" title="Run Test 9">Run</button>
+                  <span class="test-tag" id="status-9">idle</span>
+                </div>
               </div>
 
               <div class="test-row">
@@ -282,35 +310,144 @@
                   <div class="test-title">10. Enforce Waypoint Foreign Key Constraint</div>
                   <div class="test-desc">Confirms database rejects messages with non-existent waypoint_id</div>
                 </div>
-                <span class="test-tag" id="status-10">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="10" title="Run Test 10">Run</button>
+                  <span class="test-tag" id="status-10">idle</span>
+                </div>
               </div>
             </div>
           </details>
 
-          <!-- Section 5: Account Lifecycle & Security -->
-          <details class="test-category" id="cat-lifecycle">
+          <!-- Section 5: Backend Messages API & Malformed Requests (POST /api/messages) -->
+          <details class="test-category" id="cat-api-validation">
             <summary class="category-header">
               <div class="category-title-group">
                 <span class="category-chevron">▾</span>
-                <span class="category-title">Account Lifecycle & Security</span>
+                <span class="category-title">Backend API & Malformed Requests (POST /api/messages)</span>
               </div>
               <span class="category-score" id="score-cat-5">—</span>
             </summary>
             <div class="category-content">
               <div class="test-row">
                 <div>
-                  <div class="test-title">11. Modify Profile & Region</div>
-                  <div class="test-desc">Calls update_username and update_region RPCs</div>
+                  <div class="test-title">11. Reject Unauthenticated Request</div>
+                  <div class="test-desc">Sends POST /api/messages without auth token, asserts 401 Unauthorized</div>
                 </div>
-                <span class="test-tag" id="status-11">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="11" title="Run Test 11">Run</button>
+                  <span class="test-tag" id="status-11">idle</span>
+                </div>
               </div>
 
               <div class="test-row">
                 <div>
-                  <div class="test-title">12. Request Deletion & Verify Block</div>
+                  <div class="test-title">12. Reject Missing waypoint_id</div>
+                  <div class="test-desc">Sends payload without waypoint_id, asserts 400 Bad Request</div>
+                </div>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="12" title="Run Test 12">Run</button>
+                  <span class="test-tag" id="status-12">idle</span>
+                </div>
+              </div>
+
+              <div class="test-row">
+                <div>
+                  <div class="test-title">13. Reject Non-Numeric waypoint_id</div>
+                  <div class="test-desc">Sends string/invalid waypoint_id, asserts 400 Bad Request</div>
+                </div>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="13" title="Run Test 13">Run</button>
+                  <span class="test-tag" id="status-13">idle</span>
+                </div>
+              </div>
+
+              <div class="test-row">
+                <div>
+                  <div class="test-title">14. Reject Missing message_contents</div>
+                  <div class="test-desc">Sends payload without message_contents, asserts 400 Bad Request</div>
+                </div>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="14" title="Run Test 14">Run</button>
+                  <span class="test-tag" id="status-14">idle</span>
+                </div>
+              </div>
+
+              <div class="test-row">
+                <div>
+                  <div class="test-title">15. Reject Empty / Whitespace-Only Message</div>
+                  <div class="test-desc">Sends empty or whitespace string, asserts 400 Bad Request</div>
+                </div>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="15" title="Run Test 15">Run</button>
+                  <span class="test-tag" id="status-15">idle</span>
+                </div>
+              </div>
+
+              <div class="test-row">
+                <div>
+                  <div class="test-title">16. Reject Excessively Long Message</div>
+                  <div class="test-desc">Sends message exceeding 2000 chars, asserts 400 Bad Request</div>
+                </div>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="16" title="Run Test 16">Run</button>
+                  <span class="test-tag" id="status-16">idle</span>
+                </div>
+              </div>
+
+              <div class="test-row">
+                <div>
+                  <div class="test-title">17. Reject Non-Existent Waypoint ID</div>
+                  <div class="test-desc">Sends non-existent waypoint (999999999), asserts 404 Not Found</div>
+                </div>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="17" title="Run Test 17">Run</button>
+                  <span class="test-tag" id="status-17">idle</span>
+                </div>
+              </div>
+
+              <div class="test-row">
+                <div>
+                  <div class="test-title">18. Accept Valid Request & Persist Message</div>
+                  <div class="test-desc">Sends valid authenticated payload, asserts 201 Created and verifies persistence</div>
+                </div>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="18" title="Run Test 18">Run</button>
+                  <span class="test-tag" id="status-18">idle</span>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- Section 6: Account Lifecycle & Security -->
+          <details class="test-category" id="cat-lifecycle">
+            <summary class="category-header">
+              <div class="category-title-group">
+                <span class="category-chevron">▾</span>
+                <span class="category-title">Account Lifecycle & Security</span>
+              </div>
+              <span class="category-score" id="score-cat-6">—</span>
+            </summary>
+            <div class="category-content">
+              <div class="test-row">
+                <div>
+                  <div class="test-title">19. Modify Profile & Region</div>
+                  <div class="test-desc">Calls update_username and update_region RPCs</div>
+                </div>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="19" title="Run Test 19">Run</button>
+                  <span class="test-tag" id="status-19">idle</span>
+                </div>
+              </div>
+
+              <div class="test-row">
+                <div>
+                  <div class="test-title">20. Request Deletion & Verify Block</div>
                   <div class="test-desc">Executes request_account_deletion and checks get_email_status</div>
                 </div>
-                <span class="test-tag" id="status-12">idle</span>
+                <div class="test-actions">
+                  <button class="btn-run-single" data-test="20" title="Run Test 20">Run</button>
+                  <span class="test-tag" id="status-20">idle</span>
+                </div>
               </div>
             </div>
           </details>

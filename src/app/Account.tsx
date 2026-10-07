@@ -294,6 +294,7 @@ function Account(): React.JSX.Element {
         if (data.user) {
             const { error: insertError } = await supabase.from('UserData').insert({
                 id: data.user.id,
+                user_auth_id: data.user.id,
                 user_name: username,
                 home_region: homeRegion,
             });
