@@ -226,6 +226,7 @@ header {
 /* Tabs */
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
   border-bottom: 1px solid var(--border);
   margin-bottom: 1rem;
@@ -290,6 +291,121 @@ input:focus, select:focus {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
+}
+
+.password-hint {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.button-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.panel-header-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+/* Test Categories & Collapsible Sections */
+.test-category {
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 0.6rem;
+  transition: border-color 0.15s ease;
+}
+
+.test-category:hover {
+  border-color: var(--border);
+}
+
+.category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0.85rem;
+  background: #141418;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.category-header::-webkit-details-marker {
+  display: none;
+}
+
+.category-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.category-chevron {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  transition: transform 0.2s ease;
+  line-height: 1;
+}
+
+details[open] .category-chevron {
+  transform: rotate(0deg);
+}
+
+details:not([open]) .category-chevron {
+  transform: rotate(-90deg);
+}
+
+.category-title {
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.category-score {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.category-score.passed {
+  color: var(--success);
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.category-score.failed {
+  color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.category-score.running {
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.category-content {
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg);
 }
 
 /* Test Suite Rows */

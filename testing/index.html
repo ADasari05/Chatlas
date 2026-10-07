@@ -51,6 +51,7 @@
           <button class="tab-btn active" data-tab="tab-signup">Sign Up</button>
           <button class="tab-btn" data-tab="tab-signin">Sign In</button>
           <button class="tab-btn" data-tab="tab-profile">Profile</button>
+          <button class="tab-btn" data-tab="tab-messages">Messages</button>
           <button class="tab-btn" data-tab="tab-danger">Danger Zone</button>
         </div>
 
@@ -71,6 +72,7 @@
               <div class="form-group">
                 <label for="signup-password">Password</label>
                 <input type="password" id="signup-password" placeholder="Min 6 characters" required>
+                <div class="password-hint">Password must be at least 6 characters</div>
               </div>
               <div class="form-group">
                 <label for="signup-region">Home Region</label>
@@ -79,7 +81,7 @@
                 </select>
               </div>
             </div>
-            <button id="btn-signup" class="btn-primary btn-block">Sign Up New User</button>
+            <button id="btn-signup" type="submit" class="btn-primary btn-block">Sign Up New User</button>
           </form>
         </div>
 
@@ -94,7 +96,7 @@
               <label for="signin-password">Password</label>
               <input type="password" id="signin-password" placeholder="Password" required>
             </div>
-            <button id="btn-signin" class="btn-primary btn-block">Sign In</button>
+            <button id="btn-signin" type="submit" class="btn-primary btn-block">Sign In</button>
           </form>
         </div>
 
@@ -114,7 +116,29 @@
           </div>
         </div>
 
-        <!-- Tab 4: Danger Zone -->
+        <!-- Tab 4: Messages -->
+        <div id="tab-messages" class="tab-content">
+          <div class="panel-desc" style="color: var(--text-muted); margin-bottom: 0.75rem;">
+            Save and fetch messages linked to waypoints (<code>public.Messages</code> table).
+          </div>
+          <div class="form-group">
+            <label for="msg-waypoint-id">Waypoint ID</label>
+            <input type="number" id="msg-waypoint-id" placeholder="e.g. 3">
+          </div>
+          <div class="form-group">
+            <label for="msg-contents">Message Contents</label>
+            <input type="text" id="msg-contents" placeholder="Enter message text...">
+          </div>
+          <div class="button-row">
+            <button id="btn-save-message" class="btn-primary" style="flex: 1;">Save Message</button>
+            <button id="btn-fetch-messages" class="btn-ghost" style="flex: 1;">Fetch Messages</button>
+          </div>
+          <div style="margin-top: 0.75rem;">
+            <button id="btn-create-test-waypoint" class="btn-ghost btn-block">Create Test Waypoint</button>
+          </div>
+        </div>
+
+        <!-- Tab 5: Danger Zone -->
         <div id="tab-danger" class="tab-content">
           <div class="panel-desc" style="color: var(--text-muted); margin-bottom: 0.75rem;">
             Calls <code>request_account_deletion</code> to mark the current logged-in account as disabled/pending deletion.
@@ -127,74 +151,169 @@
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title">Automated Test Suite</div>
-          <button id="btn-run-all-tests" class="btn-primary btn-sm">Run All Tests</button>
+          <div class="panel-header-actions">
+            <button id="btn-toggle-all" class="btn-ghost btn-sm">Expand All</button>
+            <button id="btn-run-all-tests" class="btn-primary btn-sm">Run All Tests</button>
+          </div>
         </div>
         <div class="panel-desc">Direct verification of Supabase auth, RPC endpoints, and database tables.</div>
 
         <div class="test-list">
-          <div class="test-row">
-            <div>
-              <div class="test-title">1. Load Home Regions</div>
-              <div class="test-desc">Verifies get_home_regions RPC returns valid entries</div>
-            </div>
-            <span class="test-tag" id="status-1">idle</span>
-          </div>
+          <!-- Section 1: Pre-Registration & Validation -->
+          <details class="test-category" id="cat-validation">
+            <summary class="category-header">
+              <div class="category-title-group">
+                <span class="category-chevron">▾</span>
+                <span class="category-title">Input Validation & Constraints</span>
+              </div>
+              <span class="category-score" id="score-cat-1">—</span>
+            </summary>
+            <div class="category-content">
+              <div class="test-row">
+                <div>
+                  <div class="test-title">1. Load Home Regions</div>
+                  <div class="test-desc">Verifies get_home_regions RPC returns valid entries</div>
+                </div>
+                <span class="test-tag" id="status-1">idle</span>
+              </div>
 
-          <div class="test-row">
-            <div>
-              <div class="test-title">2. Check Username Availability</div>
-              <div class="test-desc">Verifies is_display_name_taken RPC distinguishes taken vs new</div>
-            </div>
-            <span class="test-tag" id="status-2">idle</span>
-          </div>
+              <div class="test-row">
+                <div>
+                  <div class="test-title">2. Check Username Availability</div>
+                  <div class="test-desc">Verifies is_display_name_taken RPC distinguishes taken vs new</div>
+                </div>
+                <span class="test-tag" id="status-2">idle</span>
+              </div>
 
-          <div class="test-row">
-            <div>
-              <div class="test-title">3. Register New User</div>
-              <div class="test-desc">Calls auth.signUp and generates valid UUID</div>
+              <div class="test-row">
+                <div>
+                  <div class="test-title">3. Reject Short Password (&lt; 6 chars)</div>
+                  <div class="test-desc">Confirms passwords under 6 characters are rejected</div>
+                </div>
+                <span class="test-tag" id="status-3">idle</span>
+              </div>
             </div>
-            <span class="test-tag" id="status-3">idle</span>
-          </div>
+          </details>
 
-          <div class="test-row">
-            <div>
-              <div class="test-title">4. UserData Profile Record Linking</div>
-              <div class="test-desc">Inserts UserData record matching user UUID</div>
-            </div>
-            <span class="test-tag" id="status-4">idle</span>
-          </div>
+          <!-- Section 2: Registration & Profile Setup -->
+          <details class="test-category" id="cat-registration">
+            <summary class="category-header">
+              <div class="category-title-group">
+                <span class="category-chevron">▾</span>
+                <span class="category-title">Registration & Profile Linking</span>
+              </div>
+              <span class="category-score" id="score-cat-2">—</span>
+            </summary>
+            <div class="category-content">
+              <div class="test-row">
+                <div>
+                  <div class="test-title">4. Register New User</div>
+                  <div class="test-desc">Calls auth.signUp and generates valid UUID</div>
+                </div>
+                <span class="test-tag" id="status-4">idle</span>
+              </div>
 
-          <div class="test-row">
-            <div>
-              <div class="test-title">5. Sign In Valid Credentials</div>
-              <div class="test-desc">Calls auth.signInWithPassword and confirms active JWT</div>
+              <div class="test-row">
+                <div>
+                  <div class="test-title">5. UserData Profile Record Linking</div>
+                  <div class="test-desc">Inserts UserData record matching user UUID</div>
+                </div>
+                <span class="test-tag" id="status-5">idle</span>
+              </div>
             </div>
-            <span class="test-tag" id="status-5">idle</span>
-          </div>
+          </details>
 
-          <div class="test-row">
-            <div>
-              <div class="test-title">6. Reject Invalid Credentials</div>
-              <div class="test-desc">Confirms invalid password returns rejection error</div>
-            </div>
-            <span class="test-tag" id="status-6">idle</span>
-          </div>
+          <!-- Section 3: Authentication & Sign-In -->
+          <details class="test-category" id="cat-auth">
+            <summary class="category-header">
+              <div class="category-title-group">
+                <span class="category-chevron">▾</span>
+                <span class="category-title">Authentication & Sign-In</span>
+              </div>
+              <span class="category-score" id="score-cat-3">—</span>
+            </summary>
+            <div class="category-content">
+              <div class="test-row">
+                <div>
+                  <div class="test-title">6. Sign In With Email</div>
+                  <div class="test-desc">Calls auth.signInWithPassword via email and confirms active JWT</div>
+                </div>
+                <span class="test-tag" id="status-6">idle</span>
+              </div>
 
-          <div class="test-row">
-            <div>
-              <div class="test-title">7. Modify Profile & Region</div>
-              <div class="test-desc">Calls update_username and update_region RPCs</div>
-            </div>
-            <span class="test-tag" id="status-7">idle</span>
-          </div>
+              <div class="test-row">
+                <div>
+                  <div class="test-title">7. Sign In With Username</div>
+                  <div class="test-desc">Resolves email via get_email_for_username RPC and authenticates</div>
+                </div>
+                <span class="test-tag" id="status-7">idle</span>
+              </div>
 
-          <div class="test-row">
-            <div>
-              <div class="test-title">8. Request Deletion & Verify Block</div>
-              <div class="test-desc">Executes request_account_deletion and checks get_email_status</div>
+              <div class="test-row">
+                <div>
+                  <div class="test-title">8. Reject Invalid Credentials</div>
+                  <div class="test-desc">Confirms invalid password returns rejection error</div>
+                </div>
+                <span class="test-tag" id="status-8">idle</span>
+              </div>
             </div>
-            <span class="test-tag" id="status-8">idle</span>
-          </div>
+          </details>
+
+          <!-- Section 4: Messages & Waypoints Database -->
+          <details class="test-category" id="cat-messages">
+            <summary class="category-header">
+              <div class="category-title-group">
+                <span class="category-chevron">▾</span>
+                <span class="category-title">Messages & Waypoints Database</span>
+              </div>
+              <span class="category-score" id="score-cat-4">—</span>
+            </summary>
+            <div class="category-content">
+              <div class="test-row">
+                <div>
+                  <div class="test-title">9. Save Message to Waypoint</div>
+                  <div class="test-desc">Saves message linked to waypoint_id and sender_user_id</div>
+                </div>
+                <span class="test-tag" id="status-9">idle</span>
+              </div>
+
+              <div class="test-row">
+                <div>
+                  <div class="test-title">10. Enforce Waypoint Foreign Key Constraint</div>
+                  <div class="test-desc">Confirms database rejects messages with non-existent waypoint_id</div>
+                </div>
+                <span class="test-tag" id="status-10">idle</span>
+              </div>
+            </div>
+          </details>
+
+          <!-- Section 5: Account Lifecycle & Security -->
+          <details class="test-category" id="cat-lifecycle">
+            <summary class="category-header">
+              <div class="category-title-group">
+                <span class="category-chevron">▾</span>
+                <span class="category-title">Account Lifecycle & Security</span>
+              </div>
+              <span class="category-score" id="score-cat-5">—</span>
+            </summary>
+            <div class="category-content">
+              <div class="test-row">
+                <div>
+                  <div class="test-title">11. Modify Profile & Region</div>
+                  <div class="test-desc">Calls update_username and update_region RPCs</div>
+                </div>
+                <span class="test-tag" id="status-11">idle</span>
+              </div>
+
+              <div class="test-row">
+                <div>
+                  <div class="test-title">12. Request Deletion & Verify Block</div>
+                  <div class="test-desc">Executes request_account_deletion and checks get_email_status</div>
+                </div>
+                <span class="test-tag" id="status-12">idle</span>
+              </div>
+            </div>
+          </details>
         </div>
       </div>
     </div>

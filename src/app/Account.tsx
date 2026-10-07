@@ -398,7 +398,7 @@ function Account(): React.JSX.Element {
         try {
             const { error } = await supabase.rpc('update_region', { new_region: newRegion });
             if (error) {
-                setRegionChangeError('Could not update region. Please try again.');
+                setRegionChangeError(error.message || 'Could not update region. Please try again.');
                 return;
             }
 

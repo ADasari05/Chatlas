@@ -176,60 +176,64 @@
   // --- Interactive Console Handlers ---
 
   // Sign Up
+  const formSignup = document.getElementById('form-signup');
   const btnSignup = document.getElementById('btn-signup');
-  if (btnSignup) {
-    btnSignup.addEventListener('click', async () => {
-      if (!supabaseClient) return log('Error', 'Client not initialized', true);
-      const email = document.getElementById('signup-email').value.trim();
-      const username = document.getElementById('signup-username').value.trim();
-      const password = document.getElementById('signup-password').value;
-      const homeRegion = signupRegionSelect.value;
 
-      if (!email || !username || !password || !homeRegion) {
-        log('Sign Up Validation Failed', 'Please fill in all fields (email, username, password, home region).', true);
+  async function executeSignUp(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!supabaseClient) return log('Error', 'Client not initialized', true);
+    const email = document.getElementById('signup-email').value.trim();
+    const username = document.getElementById('signup-username').value.trim();
+    const password = document.getElementById('signup-password').value;
+    const homeRegion = signupRegionSelect.value;
+
+    if (!email || !username || !password || !homeRegion) {
+      log('Sign Up Validation Failed', 'Please fill in all fields (email, username, password, home region).', true);
+      return;
+    }
+
+    if (password.length < 6) {
+      log('Sign Up Validation Failed', 'Password must be at least 6 characters.', true);
+      return;
+    }
+
+    log('Executing Sign Up', { email, username, homeRegion });
+    try {
+      // 1. Check duplicate username
+      const { data: isTaken, error: checkError } = await supabaseClient.rpc('is_display_name_taken', { check_name: username });
+      if (checkError) throw checkError;
+      if (isTaken) {
+        log('Sign Up Rejected', `Username "${username}" is already taken.`, true);
         return;
       }
 
-      if (password.length < 6) {
-        log('Sign Up Validation Failed', 'Password must be at least 6 characters.', true);
-        return;
-      }
+      // 2. Auth signup
+      const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: { data: { display_name: username } }
+      });
+      if (error) throw error;
 
-      log('Executing Sign Up', { email, username, homeRegion });
-      try {
-        // 1. Check duplicate username
-        const { data: isTaken, error: checkError } = await supabaseClient.rpc('is_display_name_taken', { check_name: username });
-        if (checkError) throw checkError;
-        if (isTaken) {
-          log('Sign Up Rejected', `Username "${username}" is already taken.`, true);
-          return;
-        }
+      log('Auth SignUp Success', { userId: data.user?.id, email: data.user?.email });
 
-        // 2. Auth signup
-        const { data, error } = await supabaseClient.auth.signUp({
-          email,
-          password,
-          options: { data: { display_name: username } }
+      // 3. UserData profile insertion
+      if (data.user) {
+        const { error: insertError } = await supabaseClient.from('UserData').insert({
+          id: data.user.id,
+          user_name: username,
+          home_region: homeRegion
         });
-        if (error) throw error;
-
-        log('Auth SignUp Success', { userId: data.user?.id, email: data.user?.email });
-
-        // 3. UserData profile insertion
-        if (data.user) {
-          const { error: insertError } = await supabaseClient.from('UserData').insert({
-            id: data.user.id,
-            user_name: username,
-            home_region: homeRegion
-          });
-          if (insertError) throw insertError;
-          log('UserData Insert Success', { id: data.user.id, user_name: username, home_region: homeRegion });
-        }
-      } catch (err) {
-        log('Sign Up Error', err.message || err, true);
+        if (insertError) throw insertError;
+        log('UserData Insert Success', { id: data.user.id, user_name: username, home_region: homeRegion });
       }
-    });
+    } catch (err) {
+      log('Sign Up Error', err.message || err, true);
+    }
   }
+
+  if (formSignup) formSignup.addEventListener('submit', executeSignUp);
+  if (btnSignup) btnSignup.addEventListener('click', executeSignUp);
 
   // Sign In
   const formSignin = document.getElementById('form-signin');
@@ -376,36 +380,193 @@
     });
   }
 
-  // --- Automated Test Suite Runner ---
+  // --- Messages Table Operations ---
+  const btnCreateWaypoint = document.getElementById('btn-create-test-waypoint');
+  if (btnCreateWaypoint) {
+    btnCreateWaypoint.addEventListener('click', async () => {
+      if (!supabaseClient) return log('Error', 'Client not initialized', true);
+
+      log('Creating Test Waypoint', { hostUser: currentSession?.user?.id || null });
+      try {
+        const { data, error } = await supabaseClient.from('Waypoints').insert({
+          host_user: currentSession?.user?.id || null,
+          longitude: -86.913,
+          latitude: 40.424
+        }).select().single();
+
+        if (error) throw error;
+        const wpInput = document.getElementById('msg-waypoint-id');
+        if (wpInput) wpInput.value = data.id;
+        log('Waypoint Created', { id: data.id, host_user: data.host_user });
+      } catch (err) {
+        log('Create Waypoint Error', err.message || err, true);
+      }
+    });
+  }
+
+  const btnSaveMessage = document.getElementById('btn-save-message');
+  if (btnSaveMessage) {
+    btnSaveMessage.addEventListener('click', async () => {
+      if (!supabaseClient) return log('Error', 'Client not initialized', true);
+
+      const waypointId = document.getElementById('msg-waypoint-id').value.trim();
+      const contents = document.getElementById('msg-contents').value.trim();
+
+      if (!waypointId || !contents) {
+        return log('Validation Error', 'Waypoint ID and message contents are required.', true);
+      }
+
+      log('Saving Message to Waypoint', { waypointId: Number(waypointId), contents });
+      try {
+        const { data, error } = await supabaseClient.from('Messages').insert({
+          sender_user_id: currentSession?.user?.id || null,
+          waypoint_id: Number(waypointId),
+          message_contents: contents,
+          timestamp: new Date().toISOString()
+        }).select().single();
+
+        if (error) throw error;
+        log('Message Saved Successfully', {
+          id: data.id,
+          sender_user_id: data.sender_user_id,
+          waypoint_id: data.waypoint_id,
+          message_contents: data.message_contents,
+          timestamp: data.timestamp
+        });
+      } catch (err) {
+        log('Save Message Error', err.message || err, true);
+      }
+    });
+  }
+
+  const btnFetchMessages = document.getElementById('btn-fetch-messages');
+  if (btnFetchMessages) {
+    btnFetchMessages.addEventListener('click', async () => {
+      if (!supabaseClient) return log('Error', 'Client not initialized', true);
+      const waypointId = document.getElementById('msg-waypoint-id').value.trim();
+      if (!waypointId) return log('Validation Error', 'Enter Waypoint ID to fetch messages for.', true);
+
+      log('Fetching Messages for Waypoint', { waypointId: Number(waypointId) });
+      try {
+        const { data, error } = await supabaseClient.from('Messages')
+          .select('*')
+          .eq('waypoint_id', Number(waypointId))
+          .order('timestamp', { ascending: true });
+
+        if (error) throw error;
+        log(`Retrieved ${data.length} Messages for Waypoint #${waypointId}`, data);
+      } catch (err) {
+        log('Fetch Messages Error', err.message || err, true);
+      }
+    });
+  }
+
+  // --- Automated Test Suite Runner & Categorization ---
+
+  const testCategories = [
+    { id: 'cat-validation', scoreId: 'score-cat-1', testIds: [1, 2, 3] },
+    { id: 'cat-registration', scoreId: 'score-cat-2', testIds: [4, 5] },
+    { id: 'cat-auth', scoreId: 'score-cat-3', testIds: [6, 7, 8] },
+    { id: 'cat-messages', scoreId: 'score-cat-4', testIds: [9, 10] },
+    { id: 'cat-lifecycle', scoreId: 'score-cat-5', testIds: [11, 12] }
+  ];
+
+  const testResults = {};
+
+  function updateCategoryScores() {
+    testCategories.forEach(cat => {
+      const scoreBadge = document.getElementById(cat.scoreId);
+      if (!scoreBadge) return;
+
+      const total = cat.testIds.length;
+      let passedCount = 0;
+      let failedCount = 0;
+      let executedCount = 0;
+
+      cat.testIds.forEach(id => {
+        if (testResults[id] === true) {
+          passedCount++;
+          executedCount++;
+        } else if (testResults[id] === false) {
+          failedCount++;
+          executedCount++;
+        }
+      });
+
+      if (executedCount === 0) {
+        scoreBadge.textContent = '—';
+        scoreBadge.className = 'category-score';
+      } else {
+        scoreBadge.textContent = `${passedCount}/${total}`;
+        if (failedCount > 0) {
+          scoreBadge.className = 'category-score failed';
+        } else if (passedCount === total) {
+          scoreBadge.className = 'category-score passed';
+        } else {
+          scoreBadge.className = 'category-score running';
+        }
+      }
+    });
+  }
 
   function setTestStatus(testNum, status, isPass) {
     const badge = document.getElementById(`status-${testNum}`);
-    if (!badge) return;
-    badge.textContent = status;
-    if (isPass === true) {
-      badge.className = 'test-tag passed';
-    } else if (isPass === false) {
-      badge.className = 'test-tag failed';
-    } else if (status === 'RUNNING') {
-      badge.className = 'test-tag running';
-    } else {
-      badge.className = 'test-tag';
+    if (badge) {
+      badge.textContent = status;
+      if (isPass === true) {
+        badge.className = 'test-tag passed';
+      } else if (isPass === false) {
+        badge.className = 'test-tag failed';
+      } else if (status === 'RUNNING') {
+        badge.className = 'test-tag running';
+      } else {
+        badge.className = 'test-tag';
+      }
     }
+    testResults[testNum] = isPass;
+    updateCategoryScores();
+  }
+
+  // Toggle Collapse/Expand All
+  const btnToggleAll = document.getElementById('btn-toggle-all');
+  if (btnToggleAll) {
+    function syncToggleBtnText() {
+      const allCategories = document.querySelectorAll('.test-category');
+      const anyOpen = Array.from(allCategories).some(cat => cat.open);
+      btnToggleAll.textContent = anyOpen ? 'Collapse All' : 'Expand All';
+    }
+
+    btnToggleAll.addEventListener('click', () => {
+      const allCategories = document.querySelectorAll('.test-category');
+      const anyOpen = Array.from(allCategories).some(cat => cat.open);
+      allCategories.forEach(cat => {
+        cat.open = !anyOpen;
+      });
+      syncToggleBtnText();
+    });
+
+    document.querySelectorAll('.test-category').forEach(cat => {
+      cat.addEventListener('toggle', syncToggleBtnText);
+    });
   }
 
   const btnRunTests = document.getElementById('btn-run-all-tests');
   if (btnRunTests) {
     btnRunTests.addEventListener('click', async () => {
       if (!supabaseClient) return log('Error', 'Client not initialized', true);
-      log('Automated Auth Suite', 'Starting 8 verification tests...');
+      log('Automated Auth & Database Suite', 'Starting 12 verification tests...');
       const timestamp = Date.now();
       const testUser = `test_runner_${timestamp}`;
       const testEmail = `test_${timestamp}@chatlas.local`;
       const testPassword = `Pass#${timestamp}`;
       let registeredUserId = null;
-      let availableRegion = 'Indiana';
+      let availableRegion = 'United States';
 
-      for (let i = 1; i <= 8; i++) setTestStatus(i, 'WAITING', null);
+      for (let i = 1; i <= 12; i++) {
+        testResults[i] = null;
+        setTestStatus(i, 'WAITING', null);
+      }
+      updateCategoryScores();
 
       // --- Test 1: get_home_regions ---
       try {
@@ -434,9 +595,27 @@
         log('Test 2 Failed', e.message, true);
       }
 
-      // --- Test 3: auth.signUp ---
+      // --- Test 3: Reject Short Password (< 6 chars) ---
       try {
         setTestStatus(3, 'RUNNING', null);
+        const shortPassword = '123';
+        const { error } = await supabaseClient.auth.signUp({
+          email: `short_pw_${timestamp}@chatlas.local`,
+          password: shortPassword
+        });
+        if (!error) {
+          throw new Error('Expected Supabase to reject password under 6 characters');
+        }
+        setTestStatus(3, 'PASSED', true);
+        log('Test 3 Passed', `Rejected short password (< 6 chars) as expected: ${error.message}`);
+      } catch (e) {
+        setTestStatus(3, 'FAILED', false);
+        log('Test 3 Failed', e.message, true);
+      }
+
+      // --- Test 4: Register New User ---
+      try {
+        setTestStatus(4, 'RUNNING', null);
         const { data, error } = await supabaseClient.auth.signUp({
           email: testEmail,
           password: testPassword,
@@ -445,64 +624,151 @@
         if (error) throw error;
         if (!data.user?.id) throw new Error('No user ID returned from signUp');
         registeredUserId = data.user.id;
-        setTestStatus(3, 'PASSED', true);
-        log('Test 3 Passed', `Registered user ID: ${registeredUserId}`);
+        setTestStatus(4, 'PASSED', true);
+        log('Test 4 Passed', `Registered user ID: ${registeredUserId}`);
       } catch (e) {
-        setTestStatus(3, 'FAILED', false);
-        log('Test 3 Failed', e.message, true);
+        setTestStatus(4, 'FAILED', false);
+        log('Test 4 Failed', e.message, true);
       }
 
-      // --- Test 4: UserData Table Profile ---
+      // --- Test 5: UserData Table Profile ---
       try {
-        setTestStatus(4, 'RUNNING', null);
-        if (!registeredUserId) throw new Error('Skipping: Test 3 failed');
+        setTestStatus(5, 'RUNNING', null);
+        if (!registeredUserId) throw new Error('Skipping: Test 4 failed');
         const { error: insertErr } = await supabaseClient.from('UserData').insert({
           id: registeredUserId,
           user_name: testUser,
           home_region: availableRegion
         });
         if (insertErr) throw insertErr;
-        setTestStatus(4, 'PASSED', true);
-        log('Test 4 Passed', `UserData profile linked for ID: ${registeredUserId}`);
+        setTestStatus(5, 'PASSED', true);
+        log('Test 5 Passed', `UserData profile linked for ID: ${registeredUserId}`);
       } catch (e) {
-        setTestStatus(4, 'FAILED', false);
-        log('Test 4 Failed', e.message, true);
+        setTestStatus(5, 'FAILED', false);
+        log('Test 5 Failed', e.message, true);
       }
 
-      // --- Test 5: Valid Login ---
+      // --- Test 6: Sign In With Email ---
       try {
-        setTestStatus(5, 'RUNNING', null);
+        setTestStatus(6, 'RUNNING', null);
         const { data, error } = await supabaseClient.auth.signInWithPassword({
           email: testEmail,
           password: testPassword
         });
         if (error) throw error;
         if (!data.session?.access_token) throw new Error('No JWT access token received');
-        setTestStatus(5, 'PASSED', true);
-        log('Test 5 Passed', 'Valid login succeeded with active JWT session');
-      } catch (e) {
-        setTestStatus(5, 'FAILED', false);
-        log('Test 5 Failed', e.message, true);
-      }
-
-      // --- Test 6: Invalid Password Rejection ---
-      try {
-        setTestStatus(6, 'RUNNING', null);
-        const { error } = await supabaseClient.auth.signInWithPassword({
-          email: testEmail,
-          password: 'DefinitelyWrongPassword123!'
-        });
-        if (!error) throw new Error('Expected login with wrong password to fail');
         setTestStatus(6, 'PASSED', true);
-        log('Test 6 Passed', `Rejected wrong password as expected: ${error.message}`);
+        log('Test 6 Passed', 'Valid login via email succeeded with active JWT session');
       } catch (e) {
         setTestStatus(6, 'FAILED', false);
         log('Test 6 Failed', e.message, true);
       }
 
-      // --- Test 7: Modify Account Info ---
+      // --- Test 7: Sign In With Username ---
       try {
         setTestStatus(7, 'RUNNING', null);
+        const { data: resolvedEmail, error: rpcErr } = await supabaseClient.rpc('get_email_for_username', {
+          check_username: testUser
+        });
+        if (rpcErr) throw rpcErr;
+        if (!resolvedEmail || resolvedEmail.toLowerCase() !== testEmail.toLowerCase()) {
+          throw new Error(`get_email_for_username returned unexpected email: ${resolvedEmail}`);
+        }
+
+        const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
+          email: resolvedEmail,
+          password: testPassword
+        });
+        if (signInErr) throw signInErr;
+        if (!signInData.session?.access_token) throw new Error('No JWT access token received on username login');
+
+        setTestStatus(7, 'PASSED', true);
+        log('Test 7 Passed', `Resolved username "${testUser}" to "${resolvedEmail}" and signed in successfully`);
+      } catch (e) {
+        setTestStatus(7, 'FAILED', false);
+        log('Test 7 Failed', e.message, true);
+      }
+
+      // --- Test 8: Invalid Password Rejection ---
+      try {
+        setTestStatus(8, 'RUNNING', null);
+        const { error } = await supabaseClient.auth.signInWithPassword({
+          email: testEmail,
+          password: 'DefinitelyWrongPassword123!'
+        });
+        if (!error) throw new Error('Expected login with wrong password to fail');
+        setTestStatus(8, 'PASSED', true);
+        log('Test 8 Passed', `Rejected wrong password as expected: ${error.message}`);
+      } catch (e) {
+        setTestStatus(8, 'FAILED', false);
+        log('Test 8 Failed', e.message, true);
+      }
+
+      // --- Test 9: Save Message to Waypoint ---
+      let testWaypointId = null;
+      let testMessageId = null;
+      try {
+        setTestStatus(9, 'RUNNING', null);
+        if (!registeredUserId) throw new Error('Skipping: Test 4 failed');
+
+        const { data: waypoint, error: wpErr } = await supabaseClient.from('Waypoints').insert({
+          host_user: registeredUserId,
+          longitude: -86.913,
+          latitude: 40.424
+        }).select().single();
+        if (wpErr) throw wpErr;
+        testWaypointId = waypoint.id;
+
+        const testPayload = `Automated verification message ${timestamp}`;
+        const { data: message, error: msgErr } = await supabaseClient.from('Messages').insert({
+          sender_user_id: registeredUserId,
+          waypoint_id: testWaypointId,
+          message_contents: testPayload
+        }).select().single();
+        if (msgErr) throw msgErr;
+        testMessageId = message.id;
+
+        try { await supabaseClient.from('Messages').delete().eq('id', testMessageId); } catch (_) {}
+
+        setTestStatus(9, 'PASSED', true);
+        log('Test 9 Passed', `Created Waypoint #${testWaypointId} and saved Message #${testMessageId}`);
+      } catch (e) {
+        if (testMessageId) {
+          try { await supabaseClient.from('Messages').delete().eq('id', testMessageId); } catch (_) {}
+        }
+        setTestStatus(9, 'FAILED', false);
+        log('Test 9 Failed', e.message, true);
+      }
+
+      // --- Test 10: Enforce Waypoint Foreign Key Constraint ---
+      try {
+        setTestStatus(10, 'RUNNING', null);
+        if (!registeredUserId) throw new Error('Skipping: Test 4 failed');
+
+        const { error: fkErr } = await supabaseClient.from('Messages').insert({
+          sender_user_id: registeredUserId,
+          waypoint_id: 999999999,
+          message_contents: 'This must fail FK constraint'
+        }).select();
+        if (!fkErr) throw new Error('Expected foreign key error when inserting invalid waypoint_id');
+
+        if (testWaypointId) {
+          try { await supabaseClient.from('Waypoints').delete().eq('id', testWaypointId); } catch (_) {}
+        }
+
+        setTestStatus(10, 'PASSED', true);
+        log('Test 10 Passed', `Foreign key constraint verified (invalid waypoint ID rejected: ${fkErr.code})`);
+      } catch (e) {
+        if (testWaypointId) {
+          try { await supabaseClient.from('Waypoints').delete().eq('id', testWaypointId); } catch (_) {}
+        }
+        setTestStatus(10, 'FAILED', false);
+        log('Test 10 Failed', e.message, true);
+      }
+
+      // --- Test 11: Modify Profile & Region ---
+      try {
+        setTestStatus(11, 'RUNNING', null);
         await supabaseClient.auth.signInWithPassword({ email: testEmail, password: testPassword });
         const updatedName = `${testUser}_mod`;
         const { error: updateErr } = await supabaseClient.rpc('update_username', { new_name: updatedName });
@@ -511,16 +777,17 @@
         const { error: regionErr } = await supabaseClient.rpc('update_region', { new_region: availableRegion });
         if (regionErr) throw regionErr;
 
-        setTestStatus(7, 'PASSED', true);
-        log('Test 7 Passed', `Updated username to "${updatedName}" and confirmed region "${availableRegion}"`);
+        setTestStatus(11, 'PASSED', true);
+        log('Test 11 Passed', `Updated username to "${updatedName}" and confirmed region "${availableRegion}"`);
       } catch (e) {
-        setTestStatus(7, 'FAILED', false);
-        log('Test 7 Failed', e.message, true);
+        setTestStatus(11, 'FAILED', false);
+        log('Test 11 Failed', e.message, true);
       }
 
-      // --- Test 8: Request Deletion & Block ---
+      // --- Test 12: Request Deletion & Block ---
       try {
-        setTestStatus(8, 'RUNNING', null);
+        setTestStatus(12, 'RUNNING', null);
+        await supabaseClient.auth.signInWithPassword({ email: testEmail, password: testPassword });
         const { error: delErr } = await supabaseClient.rpc('request_account_deletion');
         if (delErr) throw delErr;
 
@@ -529,14 +796,14 @@
         if (!statusData?.disabled) throw new Error('Expected email status to have disabled=true after deletion request');
 
         await supabaseClient.auth.signOut();
-        setTestStatus(8, 'PASSED', true);
-        log('Test 8 Passed', 'Account deletion requested and disabled status verified in backend');
+        setTestStatus(12, 'PASSED', true);
+        log('Test 12 Passed', 'Account deletion requested and disabled status verified in backend');
       } catch (e) {
-        setTestStatus(8, 'FAILED', false);
-        log('Test 8 Failed', e.message, true);
+        setTestStatus(12, 'FAILED', false);
+        log('Test 12 Failed', e.message, true);
       }
 
-      log('Completed Suite', 'All tests finished execution.');
+      log('Completed Suite', 'All 12 tests finished execution.');
     });
   }
 
