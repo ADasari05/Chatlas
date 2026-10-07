@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect , useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 
 const supabase = createClient();
@@ -31,6 +31,7 @@ function WaypointChat(): React.JSX.Element | null {
     const [chatId, setChatId] = useState<number | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState<string>('');
+    const messagesRef = useRef<HTMLDivElement>(null);
 
     // Open the chat for whichever waypoint was clicked
     useEffect(() => {
@@ -69,6 +70,13 @@ function WaypointChat(): React.JSX.Element | null {
         return () => clearInterval(interval);
     }, [chatId]);
 
+    useEffect(() => {
+        if (messagesRef.current) {
+            messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+        }
+    }, [messages.length]);
+
+
     const sendMessage = async (): Promise<void> => {
         if (chatId === null || newMessage.trim() === '') return;
 
@@ -99,7 +107,7 @@ function WaypointChat(): React.JSX.Element | null {
                 <span>Waypoint Chat</span>
                 <button onClick={closeChat}>X</button>
             </div>
-            <div className="waypoint-chat-messages">
+            <div className="waypoint-chat-messages" ref={messagesRef}>
                 {messages.map((message) => (
                     <div key={message.id} className="waypoint-chat-message">
                         <b>{message.sender_name ?? 'Unknown'}: </b>

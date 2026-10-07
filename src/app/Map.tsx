@@ -717,6 +717,7 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                 <div className="waypoint-overlay">
                 <div className="waypoint-popup">
                     <p>Do you wish to place a waypoint here?</p>
+                    <div className="waypoint-popup-buttons">
                     <button
                         className="waypoint-confirm-button"
                         onClick={() => {
@@ -735,6 +736,7 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                     >
                         Cancel
                     </button>
+                    </div>
                 </div>
                 </div>
                 
@@ -742,6 +744,8 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
             {isDeleteWaypointPopupOpen && (
                 <div className="waypoint-overlay">
                 <div className="waypoint-popup">
+                    <p>What would you like to do with this waypoint?</p>
+                    <div className="waypoint-popup-buttons">
                     <button
                         className="waypoint-confirm-button"
                         onClick={() => {
@@ -753,7 +757,6 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                     >
                         Chat
                     </button>
-
                     <button
                         className="waypoint-confirm-button"
                         onClick={() => {
@@ -761,7 +764,7 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                             deleteSelectedWaypoint();
                         }}
                     >
-                        Delete Waypoint
+                        Delete
                     </button>
                     <button
                         className="waypoint-cancel-button"
@@ -772,6 +775,7 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                     >
                         Cancel
                     </button>
+                    </div>
                 </div>
                 </div>
                 
@@ -779,6 +783,8 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
             {isChatWaypointPopupOpen && (
                 <div className="waypoint-overlay">
                 <div className="waypoint-popup">
+                    <p>{"Chat with this waypoint's host?"}</p>
+                    <div className="waypoint-popup-buttons">
                     <button
                         className="waypoint-confirm-button"
                         onClick={() => {
@@ -798,6 +804,7 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                     >
                         Cancel
                     </button>
+                    </div>
                 </div>
                 </div>
                 
