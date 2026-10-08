@@ -40,8 +40,8 @@ async function authenticateCaller(
 }
 
 /**
- * GET /api/messages?waypoint_id=<id>
- * Validates request and fetches all messages associated with a given waypoint.
+ * GET /api/messages?chat_connection_id=<id> (or ?associated_chat_connection=<id> / ?waypoint_id=<id>)
+ * Validates request and fetches all messages associated with a given chat connection.
  */
 export async function GET(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -60,49 +60,93 @@ export async function GET(request: NextRequest) {
 
   // 2. Validate Query Parameter
   const { searchParams } = new URL(request.url);
+  const chatParam = searchParams.get("associated_chat_connection") || searchParams.get("chat_connection_id");
   const waypointParam = searchParams.get("waypoint_id");
 
-  if (!waypointParam) {
+  if (!chatParam && !waypointParam) {
     return NextResponse.json(
-      { error: "Validation failed: Query parameter 'waypoint_id' is required." },
+      { error: "Validation failed: Query parameter 'associated_chat_connection' is required." },
       { status: 400, headers: corsHeaders(origin) }
     );
   }
 
-  const waypointId = Number(waypointParam);
-  if (!Number.isInteger(waypointId) || waypointId <= 0) {
-    return NextResponse.json(
-      { error: "Validation failed: Query parameter 'waypoint_id' must be a positive integer." },
-      { status: 400, headers: corsHeaders(origin) }
-    );
+  let targetChatId: number;
+
+  if (chatParam) {
+    const parsedId = Number(chatParam);
+    if (!Number.isInteger(parsedId) || parsedId <= 0) {
+      return NextResponse.json(
+        { error: "Validation failed: Query parameter 'associated_chat_connection' must be a positive integer." },
+        { status: 400, headers: corsHeaders(origin) }
+      );
+    }
+    targetChatId = parsedId;
+
+    // Verify ChatConnection Exists
+    const { data: chatConn, error: chatErr } = await supabase
+      .from("ChatConnections")
+      .select("id")
+      .eq("id", targetChatId)
+      .maybeSingle();
+
+    if (chatErr) {
+      return NextResponse.json(
+        { error: `Database error checking chat connection: ${chatErr.message}` },
+        { status: 500, headers: corsHeaders(origin) }
+      );
+    }
+
+    if (!chatConn) {
+      return NextResponse.json(
+        { error: `Chat connection with ID ${targetChatId} not found.` },
+        { status: 404, headers: corsHeaders(origin) }
+      );
+    }
+  } else {
+    // Backwards compatibility: resolve chat connection via waypoint_id
+    const parsedWpId = Number(waypointParam);
+    if (!Number.isInteger(parsedWpId) || parsedWpId <= 0) {
+      return NextResponse.json(
+        { error: "Validation failed: Query parameter 'waypoint_id' must be a positive integer." },
+        { status: 400, headers: corsHeaders(origin) }
+      );
+    }
+
+    const { data: waypoint, error: wpError } = await supabase
+      .from("Waypoints")
+      .select("id, associated_chat_connection")
+      .eq("id", parsedWpId)
+      .maybeSingle();
+
+    if (wpError) {
+      return NextResponse.json(
+        { error: `Database error checking waypoint: ${wpError.message}` },
+        { status: 500, headers: corsHeaders(origin) }
+      );
+    }
+
+    if (!waypoint) {
+      return NextResponse.json(
+        { error: `Waypoint with ID ${parsedWpId} not found.` },
+        { status: 404, headers: corsHeaders(origin) }
+      );
+    }
+
+    if (!waypoint.associated_chat_connection) {
+      return NextResponse.json(
+        { error: `Waypoint with ID ${parsedWpId} has no associated chat connection.` },
+        { status: 404, headers: corsHeaders(origin) }
+      );
+    }
+
+    targetChatId = waypoint.associated_chat_connection;
   }
 
-  // 3. Verify Target Waypoint Exists in Database
-  const { data: waypoint, error: wpError } = await supabase
-    .from("Waypoints")
-    .select("id")
-    .eq("id", waypointId)
-    .maybeSingle();
-
-  if (wpError) {
-    return NextResponse.json(
-      { error: `Database error checking waypoint: ${wpError.message}` },
-      { status: 500, headers: corsHeaders(origin) }
-    );
-  }
-
-  if (!waypoint) {
-    return NextResponse.json(
-      { error: `Waypoint with ID ${waypointId} not found.` },
-      { status: 404, headers: corsHeaders(origin) }
-    );
-  }
-
-  // 4. Retrieve Messages
+  // 3. Retrieve Messages
   const { data: messages, error } = await supabase
     .from("Messages")
     .select("*")
-    .eq("waypoint_id", waypointId)
+    .eq("associated_chat_connection", targetChatId)
     .order("timestamp", { ascending: true });
 
   if (error) {
@@ -120,7 +164,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/messages
- * Validates and stores a new message for a waypoint.
+ * Validates and stores a new message for a chat connection.
  */
 export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -155,40 +199,57 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { waypoint_id, message_contents } = body as Record<string, unknown>;
+  const payload = body as Record<string, unknown>;
+  const rawChatId = payload.associated_chat_connection ?? payload.chat_connection_id;
+  const rawWaypointId = payload.waypoint_id;
 
-  // 3. Validate waypoint_id
-  if (waypoint_id === undefined || waypoint_id === null || waypoint_id === "") {
+  // 3. Validate Target Parameter (Syntax)
+  let rawParsedChatId: number | null = null;
+  let rawParsedWpId: number | null = null;
+
+  if (rawChatId !== undefined && rawChatId !== null && rawChatId !== "") {
+    const numChatId = Number(rawChatId);
+    if (!Number.isInteger(numChatId) || numChatId <= 0) {
+      return NextResponse.json(
+        { error: "Validation failed: 'associated_chat_connection' must be a positive integer." },
+        { status: 400, headers: corsHeaders(origin) }
+      );
+    }
+    rawParsedChatId = numChatId;
+  } else if (rawWaypointId !== undefined && rawWaypointId !== null && rawWaypointId !== "") {
+    // Backwards compatibility with waypoint_id
+    const numWaypointId = Number(rawWaypointId);
+    if (!Number.isInteger(numWaypointId) || numWaypointId <= 0) {
+      return NextResponse.json(
+        { error: "Validation failed: 'waypoint_id' must be a positive integer." },
+        { status: 400, headers: corsHeaders(origin) }
+      );
+    }
+    rawParsedWpId = numWaypointId;
+  } else {
     return NextResponse.json(
-      { error: "Validation failed: 'waypoint_id' is required." },
+      { error: "Validation failed: 'associated_chat_connection' is required." },
       { status: 400, headers: corsHeaders(origin) }
     );
   }
 
-  const numWaypointId = Number(waypoint_id);
-  if (!Number.isInteger(numWaypointId) || numWaypointId <= 0) {
-    return NextResponse.json(
-      { error: "Validation failed: 'waypoint_id' must be a positive integer." },
-      { status: 400, headers: corsHeaders(origin) }
-    );
-  }
-
-  // 4. Validate message_contents
-  if (message_contents === undefined || message_contents === null) {
+  // 4. Validate message_contents (Syntax & limits before database operations)
+  const messageContents = payload.message_contents;
+  if (messageContents === undefined || messageContents === null) {
     return NextResponse.json(
       { error: "Validation failed: 'message_contents' is required." },
       { status: 400, headers: corsHeaders(origin) }
     );
   }
 
-  if (typeof message_contents !== "string") {
+  if (typeof messageContents !== "string") {
     return NextResponse.json(
       { error: "Validation failed: 'message_contents' must be a string." },
       { status: 400, headers: corsHeaders(origin) }
     );
   }
 
-  const trimmedContents = message_contents.trim();
+  const trimmedContents = messageContents.trim();
   if (trimmedContents.length === 0) {
     return NextResponse.json(
       { error: "Validation failed: 'message_contents' cannot be empty or whitespace only." },
@@ -196,7 +257,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (message_contents.length > MAX_MESSAGE_LENGTH) {
+  if (messageContents.length > MAX_MESSAGE_LENGTH) {
     return NextResponse.json(
       {
         error: `Validation failed: 'message_contents' exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters.`,
@@ -205,25 +266,68 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 5. Verify Target Waypoint Exists in Database
-  const { data: waypoint, error: wpError } = await supabase
-    .from("Waypoints")
-    .select("id")
-    .eq("id", numWaypointId)
-    .maybeSingle();
+  // 5. Verify Target Entity Exists in Database and is Open
+  let targetChatId: number;
 
-  if (wpError) {
-    return NextResponse.json(
-      { error: `Database error checking waypoint: ${wpError.message}` },
-      { status: 500, headers: corsHeaders(origin) }
-    );
-  }
+  if (rawParsedChatId !== null) {
+    targetChatId = rawParsedChatId;
 
-  if (!waypoint) {
-    return NextResponse.json(
-      { error: `Waypoint with ID ${numWaypointId} not found.` },
-      { status: 404, headers: corsHeaders(origin) }
-    );
+    const { data: chatConn, error: chatErr } = await supabase
+      .from("ChatConnections")
+      .select("id, closed_status")
+      .eq("id", targetChatId)
+      .maybeSingle();
+
+    if (chatErr) {
+      return NextResponse.json(
+        { error: `Database error checking chat connection: ${chatErr.message}` },
+        { status: 500, headers: corsHeaders(origin) }
+      );
+    }
+
+    if (!chatConn) {
+      return NextResponse.json(
+        { error: `Chat connection with ID ${targetChatId} not found.` },
+        { status: 404, headers: corsHeaders(origin) }
+      );
+    }
+
+    if (chatConn.closed_status === true) {
+      return NextResponse.json(
+        { error: `Chat connection ${targetChatId} is closed. Cannot send message.` },
+        { status: 400, headers: corsHeaders(origin) }
+      );
+    }
+  } else {
+    // Backwards compatibility: verify waypoint exists and has associated chat connection
+    const { data: waypoint, error: wpError } = await supabase
+      .from("Waypoints")
+      .select("id, associated_chat_connection")
+      .eq("id", rawParsedWpId!)
+      .maybeSingle();
+
+    if (wpError) {
+      return NextResponse.json(
+        { error: `Database error checking waypoint: ${wpError.message}` },
+        { status: 500, headers: corsHeaders(origin) }
+      );
+    }
+
+    if (!waypoint) {
+      return NextResponse.json(
+        { error: `Waypoint with ID ${rawParsedWpId} not found.` },
+        { status: 404, headers: corsHeaders(origin) }
+      );
+    }
+
+    if (!waypoint.associated_chat_connection) {
+      return NextResponse.json(
+        { error: `Waypoint with ID ${rawParsedWpId} has no associated chat connection.` },
+        { status: 404, headers: corsHeaders(origin) }
+      );
+    }
+
+    targetChatId = waypoint.associated_chat_connection;
   }
 
   // 6. Apply Valid Request: Insert into Messages Table
@@ -231,7 +335,7 @@ export async function POST(request: NextRequest) {
     .from("Messages")
     .insert({
       sender_user_id: user.id,
-      waypoint_id: numWaypointId,
+      associated_chat_connection: targetChatId,
       message_contents: trimmedContents,
       timestamp: new Date().toISOString(),
     })
@@ -253,3 +357,4 @@ export async function POST(request: NextRequest) {
     { status: 201, headers: corsHeaders(origin) }
   );
 }
+

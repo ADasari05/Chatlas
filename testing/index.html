@@ -119,10 +119,10 @@
         <!-- Tab 4: Messages -->
         <div id="tab-messages" class="tab-content">
           <div class="panel-desc" style="color: var(--text-muted); margin-bottom: 0.75rem;">
-            Save and fetch messages linked to waypoints (<code>public.Messages</code> table).
+            Save and fetch messages linked to chat connections (<code>public.Messages</code> table).
           </div>
           <div class="form-group">
-            <label for="msg-waypoint-id">Waypoint ID</label>
+            <label for="msg-waypoint-id">Chat Connection ID (or Waypoint ID)</label>
             <input type="number" id="msg-waypoint-id" placeholder="e.g. 3">
           </div>
           <div class="form-group">
@@ -138,7 +138,7 @@
             <button id="btn-fetch-messages-api" class="btn-ghost" style="flex: 1; border-color: #6366f1; color: #a5b4fc;">Fetch (Backend API)</button>
           </div>
           <div style="margin-top: 0.75rem;">
-            <button id="btn-create-test-waypoint" class="btn-ghost btn-block">Create Test Waypoint</button>
+            <button id="btn-create-test-waypoint" class="btn-ghost btn-block">Create Test Waypoint & Chat</button>
           </div>
         </div>
 
@@ -288,20 +288,20 @@
             </div>
           </details>
 
-          <!-- Section 4: Messages & Waypoints Database -->
+          <!-- Section 4: Messages & Chat Connections Database -->
           <details class="test-category" id="cat-messages">
             <summary class="category-header">
               <div class="category-title-group">
                 <span class="category-chevron">▾</span>
-                <span class="category-title">Messages & Waypoints Database</span>
+                <span class="category-title">Messages & Chat Connections Database</span>
               </div>
               <span class="category-score" id="score-cat-4">—</span>
             </summary>
             <div class="category-content">
               <div class="test-row">
                 <div>
-                  <div class="test-title">9. Save Message to Waypoint</div>
-                  <div class="test-desc">Saves message linked to waypoint_id and sender_user_id</div>
+                  <div class="test-title">9. Save Message to Chat Connection</div>
+                  <div class="test-desc">Saves message linked to associated_chat_connection and sender_user_id</div>
                 </div>
                 <div class="test-actions">
                   <button class="btn-run-single" data-test="9" title="Run Test 9">Run</button>
@@ -311,8 +311,8 @@
 
               <div class="test-row">
                 <div>
-                  <div class="test-title">10. Enforce Waypoint Foreign Key Constraint</div>
-                  <div class="test-desc">Confirms database rejects messages with non-existent waypoint_id</div>
+                  <div class="test-title">10. Enforce Chat Connection Foreign Key Constraint</div>
+                  <div class="test-desc">Confirms database rejects messages with non-existent associated_chat_connection</div>
                 </div>
                 <div class="test-actions">
                   <button class="btn-run-single" data-test="10" title="Run Test 10">Run</button>
@@ -345,8 +345,8 @@
 
               <div class="test-row">
                 <div>
-                  <div class="test-title">12. Reject Missing waypoint_id</div>
-                  <div class="test-desc">Sends payload without waypoint_id, asserts 400 Bad Request</div>
+                  <div class="test-title">12. Reject Missing associated_chat_connection</div>
+                  <div class="test-desc">Sends payload without associated_chat_connection, asserts 400 Bad Request</div>
                 </div>
                 <div class="test-actions">
                   <button class="btn-run-single" data-test="12" title="Run Test 12">Run</button>
@@ -356,8 +356,8 @@
 
               <div class="test-row">
                 <div>
-                  <div class="test-title">13. Reject Non-Numeric waypoint_id</div>
-                  <div class="test-desc">Sends string/invalid waypoint_id, asserts 400 Bad Request</div>
+                  <div class="test-title">13. Reject Non-Numeric associated_chat_connection</div>
+                  <div class="test-desc">Sends string/invalid associated_chat_connection, asserts 400 Bad Request</div>
                 </div>
                 <div class="test-actions">
                   <button class="btn-run-single" data-test="13" title="Run Test 13">Run</button>
@@ -400,8 +400,8 @@
 
               <div class="test-row">
                 <div>
-                  <div class="test-title">17. Reject Non-Existent Waypoint ID</div>
-                  <div class="test-desc">Sends non-existent waypoint (999999999), asserts 404 Not Found</div>
+                  <div class="test-title">17. Reject Non-Existent Chat Connection ID</div>
+                  <div class="test-desc">Sends non-existent chat connection (999999999), asserts 404 Not Found</div>
                 </div>
                 <div class="test-actions">
                   <button class="btn-run-single" data-test="17" title="Run Test 17">Run</button>
@@ -479,7 +479,7 @@
 
               <div class="test-row">
                 <div>
-                  <div class="test-title">22. Reject Missing waypoint_id Parameter</div>
+                  <div class="test-title">22. Reject Missing associated_chat_connection Parameter</div>
                   <div class="test-desc">Sends GET /api/messages with no params, asserts 400 Bad Request</div>
                 </div>
                 <div class="test-actions">
@@ -490,8 +490,8 @@
 
               <div class="test-row">
                 <div>
-                  <div class="test-title">23. Reject Non-Numeric waypoint_id Parameter</div>
-                  <div class="test-desc">Sends GET /api/messages?waypoint_id=not_an_id, asserts 400 Bad Request</div>
+                  <div class="test-title">23. Reject Non-Numeric associated_chat_connection Parameter</div>
+                  <div class="test-desc">Sends GET /api/messages?associated_chat_connection=not_an_id, asserts 400 Bad Request</div>
                 </div>
                 <div class="test-actions">
                   <button class="btn-run-single" data-test="23" title="Run Test 23">Run</button>
@@ -501,8 +501,8 @@
 
               <div class="test-row">
                 <div>
-                  <div class="test-title">24. Reject Non-Existent Waypoint ID</div>
-                  <div class="test-desc">Sends GET /api/messages?waypoint_id=999999999, asserts 404 Not Found</div>
+                  <div class="test-title">24. Reject Non-Existent Chat Connection ID</div>
+                  <div class="test-desc">Sends GET /api/messages?associated_chat_connection=999999999, asserts 404 Not Found</div>
                 </div>
                 <div class="test-actions">
                   <button class="btn-run-single" data-test="24" title="Run Test 24">Run</button>
@@ -513,7 +513,7 @@
               <div class="test-row">
                 <div>
                   <div class="test-title">25. Accept Valid Request & Return Messages</div>
-                  <div class="test-desc">Sends authenticated GET for existing waypoint, asserts 200 OK and chronological list</div>
+                  <div class="test-desc">Sends authenticated GET for existing chat connection, asserts 200 OK and chronological list</div>
                 </div>
                 <div class="test-actions">
                   <button class="btn-run-single" data-test="25" title="Run Test 25">Run</button>
@@ -580,7 +580,7 @@
               <div class="test-row">
                 <div>
                   <div class="test-title">30. Accept Valid Deletion & Purge Supabase Auth</div>
-                  <div class="test-desc">Provisions user with waypoint & message, asserts 200, verifies waypoint deleted & message kept</div>
+                  <div class="test-desc">Provisions user with waypoint, chat connection & message, asserts 200, verifies waypoint deleted & message kept</div>
                 </div>
                 <div class="test-actions">
                   <button class="btn-run-single" data-test="30" title="Run Test 30">Run</button>

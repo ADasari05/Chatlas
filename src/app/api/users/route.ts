@@ -161,15 +161,6 @@ export async function DELETE(request: NextRequest) {
     const waypointIds = (userWaypoints || []).map((w) => w.id);
 
     // C. PRESERVE MESSAGES:
-    // Detach messages from the user's waypoints before deleting waypoints
-    // (This prevents Postgres from cascade-deleting messages when the waypoint is removed)
-    if (waypointIds.length > 0) {
-      await supabaseAdmin
-        .from("Messages")
-        .update({ waypoint_id: null })
-        .in("waypoint_id", waypointIds);
-    }
-
     // Detach messages sent by this user (assign sender to null so messages are kept and FK is satisfied)
     await supabaseAdmin
       .from("Messages")
@@ -191,10 +182,24 @@ export async function DELETE(request: NextRequest) {
       .delete()
       .or(`sender_id.in.(${allUserIds.join(",")}),receiver_id.in.(${allUserIds.join(",")})`);
 
-    await supabaseAdmin
+    const { data: userChats } = await supabaseAdmin
       .from("ChatConnections")
-      .delete()
+      .select("id")
       .in("host_user_uuid", allUserIds);
+
+    const chatIds = (userChats || []).map((c) => c.id);
+    if (chatIds.length > 0) {
+      // Delete messages in those deleted chat rooms before removing chat connections
+      await supabaseAdmin
+        .from("Messages")
+        .delete()
+        .in("associated_chat_connection", chatIds);
+
+      await supabaseAdmin
+        .from("ChatConnections")
+        .delete()
+        .in("id", chatIds);
+    }
 
     // F. Delete UserData profile row
     await supabaseAdmin

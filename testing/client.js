@@ -418,18 +418,25 @@
     btnCreateWaypoint.addEventListener('click', async () => {
       if (!supabaseClient) return log('Error', 'Client not initialized', true);
 
-      log('Creating Test Waypoint', { hostUser: currentSession?.user?.id || null });
+      log('Creating Test Waypoint & Chat Connection', { hostUser: currentSession?.user?.id || null });
       try {
+        const { data: chatData, error: chatErr } = await supabaseClient.from('ChatConnections').insert({
+          host_user_uuid: currentSession?.user?.id || null,
+          closed_status: false
+        }).select().single();
+        if (chatErr) throw chatErr;
+
         const { data, error } = await supabaseClient.from('Waypoints').insert({
           host_user: currentSession?.user?.id || null,
           longitude: -86.913,
-          latitude: 40.424
+          latitude: 40.424,
+          associated_chat_connection: chatData.id
         }).select().single();
 
         if (error) throw error;
         const wpInput = document.getElementById('msg-waypoint-id');
-        if (wpInput) wpInput.value = data.id;
-        log('Waypoint Created', { id: data.id, host_user: data.host_user });
+        if (wpInput) wpInput.value = chatData.id;
+        log('Waypoint & Chat Connection Created', { waypointId: data.id, chatConnectionId: chatData.id });
       } catch (err) {
         log('Create Waypoint Error', err.message || err, true);
       }
@@ -449,11 +456,11 @@
       }
 
       const senderId = currentSession?.user?.id || null;
-      log('Saving Message to Waypoint', { waypointId: Number(waypointId), contents, senderUserId: senderId });
+      log('Saving Message to Chat Connection', { chatConnectionId: Number(waypointId), contents, senderUserId: senderId });
       try {
         const { data, error } = await supabaseClient.from('Messages').insert({
           sender_user_id: senderId,
-          waypoint_id: Number(waypointId),
+          associated_chat_connection: Number(waypointId),
           message_contents: contents,
           timestamp: new Date().toISOString()
         }).select().single();
@@ -462,7 +469,7 @@
         log('Message Saved Successfully', {
           id: data.id,
           sender_user_id: data.sender_user_id,
-          waypoint_id: data.waypoint_id,
+          associated_chat_connection: data.associated_chat_connection,
           message_contents: data.message_contents,
           timestamp: data.timestamp
         });
@@ -478,9 +485,9 @@
       const waypointId = document.getElementById('msg-waypoint-id').value.trim();
       const contents = document.getElementById('msg-contents').value;
       if (!waypointId || !contents) {
-        return log('Validation Error', 'Waypoint ID and message contents are required.', true);
+        return log('Validation Error', 'Chat Connection ID and message contents are required.', true);
       }
-      log('Sending Message via Next.js Backend API (POST /api/messages)', { waypointId, contents });
+      log('Sending Message via Next.js Backend API (POST /api/messages)', { chatConnectionId: waypointId, contents });
       try {
         const session = currentSession || (await supabaseClient.auth.getSession()).data.session;
         const token = session?.access_token;
@@ -491,7 +498,7 @@
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           },
           body: JSON.stringify({
-            waypoint_id: Number(waypointId),
+            associated_chat_connection: Number(waypointId),
             message_contents: contents
           })
         });
@@ -512,17 +519,17 @@
     btnFetchMessages.addEventListener('click', async () => {
       if (!supabaseClient) return log('Error', 'Client not initialized', true);
       const waypointId = document.getElementById('msg-waypoint-id').value.trim();
-      if (!waypointId) return log('Validation Error', 'Enter Waypoint ID to fetch messages for.', true);
+      if (!waypointId) return log('Validation Error', 'Enter Chat Connection ID to fetch messages for.', true);
 
-      log('Fetching Messages (Direct DB) for Waypoint', { waypointId: Number(waypointId) });
+      log('Fetching Messages (Direct DB) for Chat Connection', { chatConnectionId: Number(waypointId) });
       try {
         const { data, error } = await supabaseClient.from('Messages')
           .select('*')
-          .eq('waypoint_id', Number(waypointId))
+          .eq('associated_chat_connection', Number(waypointId))
           .order('timestamp', { ascending: true });
 
         if (error) throw error;
-        log(`Retrieved ${data.length} Messages for Waypoint #${waypointId}`, data);
+        log(`Retrieved ${data.length} Messages for Chat Connection #${waypointId}`, data);
       } catch (err) {
         log('Fetch Messages Error', err.message || err, true);
       }
@@ -533,13 +540,13 @@
   if (btnFetchMessagesApi) {
     btnFetchMessagesApi.addEventListener('click', async () => {
       const waypointId = document.getElementById('msg-waypoint-id').value.trim();
-      if (!waypointId) return log('Validation Error', 'Enter Waypoint ID to fetch messages for.', true);
+      if (!waypointId) return log('Validation Error', 'Enter Chat Connection ID to fetch messages for.', true);
 
-      log('Fetching Messages via Next.js Backend API (GET /api/messages)', { waypointId });
+      log('Fetching Messages via Next.js Backend API (GET /api/messages)', { chatConnectionId: waypointId });
       try {
         const session = currentSession || (await supabaseClient.auth.getSession()).data.session;
         const token = session?.access_token;
-        const res = await fetch(`http://localhost:3000/api/messages?waypoint_id=${encodeURIComponent(waypointId)}`, {
+        const res = await fetch(`http://localhost:3000/api/messages?associated_chat_connection=${encodeURIComponent(waypointId)}`, {
           method: 'GET',
           headers: {
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -679,6 +686,8 @@
     if (!signUpData.user?.id) throw new Error('No user ID returned from signUp fixture');
     registeredUserId = signUpData.user.id;
 
+    const token = signUpData.session?.access_token || null;
+
     if (requirement === 'full_user') {
       const { error: profileErr } = await supabaseClient.from('UserData').insert({
         id: registeredUserId,
@@ -689,7 +698,30 @@
       if (profileErr) throw profileErr;
     }
 
-    return { timestamp: ts, testUser, testEmail, testPassword, registeredUserId, availableRegion };
+    return { timestamp: ts, testUser, testEmail, testPassword, registeredUserId, availableRegion, token };
+  }
+
+  async function ensureSession(fixture) {
+    if (!fixture) throw new Error('No fixture provided');
+    if (fixture.token) {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session && session.user?.email?.toLowerCase() === fixture.testEmail?.toLowerCase()) {
+        return fixture.token;
+      }
+    }
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session && session.user?.email?.toLowerCase() === fixture.testEmail?.toLowerCase()) {
+      fixture.token = session.access_token;
+      return session.access_token;
+    }
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email: fixture.testEmail,
+      password: fixture.testPassword
+    });
+    if (error) throw error;
+    if (!data.session?.access_token) throw new Error('Sign-in returned no access token');
+    fixture.token = data.session.access_token;
+    return fixture.token;
   }
 
   async function executeSingleTest(testNum, ctx = null) {
@@ -785,6 +817,7 @@
           });
           if (error) throw error;
           if (!data.session?.access_token) throw new Error('No JWT access token received');
+          if (ctx) ctx.token = data.session.access_token;
           setTestStatus(6, 'PASSED', true);
           log('Test 6 Passed', 'Valid login via email succeeded with active JWT session');
           break;
@@ -808,6 +841,7 @@
           });
           if (signInErr) throw signInErr;
           if (!signInData.session?.access_token) throw new Error('No JWT access token received on username login');
+          if (ctx) ctx.token = signInData.session.access_token;
           setTestStatus(7, 'PASSED', true);
           log('Test 7 Passed', `Resolved username "${fixture.testUser}" to "${resolvedEmail}" and signed in successfully`);
           break;
@@ -836,21 +870,19 @@
             throw new Error('Skipping: Test 4 failed');
           }
           const ts = Date.now();
-          let localWpId = null;
+          let localChatId = null;
           let localMsgId = null;
           try {
-            const { data: waypoint, error: wpErr } = await supabaseClient.from('Waypoints').insert({
-              host_user: fixture.registeredUserId,
-              longitude: -86.913,
-              latitude: 40.424
+            const { data: chatConn, error: chatErr } = await supabaseClient.from('ChatConnections').insert({
+              host_user_uuid: fixture.registeredUserId
             }).select().single();
-            if (wpErr) throw wpErr;
-            localWpId = waypoint.id;
-            if (ctx) ctx.testWaypointId = localWpId;
+            if (chatErr) throw chatErr;
+            localChatId = chatConn.id;
+            if (ctx) ctx.testChatConnectionId = localChatId;
 
             const { data: message, error: msgErr } = await supabaseClient.from('Messages').insert({
               sender_user_id: fixture.registeredUserId,
-              waypoint_id: localWpId,
+              associated_chat_connection: localChatId,
               message_contents: `Automated verification message ${ts}`
             }).select().single();
             if (msgErr) throw msgErr;
@@ -858,16 +890,16 @@
 
             try { await supabaseClient.from('Messages').delete().eq('id', localMsgId); } catch (_) {}
             if (!ctx) {
-              try { await supabaseClient.from('Waypoints').delete().eq('id', localWpId); } catch (_) {}
+              try { await supabaseClient.from('ChatConnections').delete().eq('id', localChatId); } catch (_) {}
             }
             setTestStatus(9, 'PASSED', true);
-            log('Test 9 Passed', `Created Waypoint #${localWpId} and saved Message #${localMsgId}`);
+            log('Test 9 Passed', `Created ChatConnection #${localChatId} and saved Message #${localMsgId}`);
           } catch (err) {
             if (localMsgId) {
               try { await supabaseClient.from('Messages').delete().eq('id', localMsgId); } catch (_) {}
             }
-            if (!ctx && localWpId) {
-              try { await supabaseClient.from('Waypoints').delete().eq('id', localWpId); } catch (_) {}
+            if (!ctx && localChatId) {
+              try { await supabaseClient.from('ChatConnections').delete().eq('id', localChatId); } catch (_) {}
             }
             throw err;
           }
@@ -884,16 +916,16 @@
           try {
             const { error: fkErr } = await supabaseClient.from('Messages').insert({
               sender_user_id: fixture.registeredUserId,
-              waypoint_id: 999999999,
+              associated_chat_connection: 999999999,
               message_contents: 'This must fail FK constraint'
             }).select();
-            if (!fkErr) throw new Error('Expected foreign key error when inserting invalid waypoint_id');
+            if (!fkErr) throw new Error('Expected foreign key error when inserting invalid associated_chat_connection');
             setTestStatus(10, 'PASSED', true);
-            log('Test 10 Passed', `Foreign key constraint verified (invalid waypoint ID rejected: ${fkErr.code})`);
+            log('Test 10 Passed', `Foreign key constraint verified (invalid chat connection ID rejected: ${fkErr.code})`);
           } finally {
-            if (ctx && ctx.testWaypointId) {
-              try { await supabaseClient.from('Waypoints').delete().eq('id', ctx.testWaypointId); } catch (_) {}
-              ctx.testWaypointId = null;
+            if (ctx && ctx.testChatConnectionId) {
+              try { await supabaseClient.from('ChatConnections').delete().eq('id', ctx.testChatConnectionId); } catch (_) {}
+              ctx.testChatConnectionId = null;
             }
           }
           break;
@@ -906,7 +938,7 @@
           const res = await fetch('http://localhost:3000/api/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ waypoint_id: 1, message_contents: 'Test' })
+            body: JSON.stringify({ associated_chat_connection: 1, message_contents: 'Test' })
           });
           const data = await res.json();
           if (res.status !== 401) {
@@ -917,68 +949,53 @@
           break;
         }
 
-        // Test 12: Reject Missing waypoint_id
+        // Test 12: Reject Missing associated_chat_connection
         case 12: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
           const res = await fetch('http://localhost:3000/api/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ message_contents: 'Missing waypoint ID' })
+            body: JSON.stringify({ message_contents: 'Missing associated chat connection ID' })
           });
           const data = await res.json();
           if (res.status !== 400) {
             throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
           }
           setTestStatus(12, 'PASSED', true);
-          log('Test 12 Passed', `Backend rejected missing waypoint_id with 400: "${data.error}"`);
+          log('Test 12 Passed', `Backend rejected missing associated_chat_connection with 400: "${data.error}"`);
           break;
         }
 
-        // Test 13: Reject Non-Numeric waypoint_id
+        // Test 13: Reject Non-Numeric associated_chat_connection
         case 13: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
           const res = await fetch('http://localhost:3000/api/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ waypoint_id: 'not_an_id', message_contents: 'Invalid waypoint' })
+            body: JSON.stringify({ associated_chat_connection: 'not_an_id', message_contents: 'Invalid chat connection' })
           });
           const data = await res.json();
           if (res.status !== 400) {
             throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
           }
           setTestStatus(13, 'PASSED', true);
-          log('Test 13 Passed', `Backend rejected non-numeric waypoint_id with 400: "${data.error}"`);
+          log('Test 13 Passed', `Backend rejected non-numeric associated_chat_connection with 400: "${data.error}"`);
           break;
         }
 
         // Test 14: Reject Missing message_contents
         case 14: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
           const res = await fetch('http://localhost:3000/api/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ waypoint_id: 1 })
+            body: JSON.stringify({ associated_chat_connection: 1 })
           });
           const data = await res.json();
           if (res.status !== 400) {
@@ -992,17 +1009,12 @@
         // Test 15: Reject Empty / Whitespace-Only Message
         case 15: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
           const res = await fetch('http://localhost:3000/api/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ waypoint_id: 1, message_contents: '     ' })
+            body: JSON.stringify({ associated_chat_connection: 1, message_contents: '     ' })
           });
           const data = await res.json();
           if (res.status !== 400) {
@@ -1016,18 +1028,13 @@
         // Test 16: Reject Excessively Long Message
         case 16: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
           const longMessage = 'A'.repeat(2001);
           const res = await fetch('http://localhost:3000/api/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ waypoint_id: 1, message_contents: longMessage })
+            body: JSON.stringify({ associated_chat_connection: 1, message_contents: longMessage })
           });
           const data = await res.json();
           if (res.status !== 400) {
@@ -1038,47 +1045,35 @@
           break;
         }
 
-        // Test 17: Reject Non-Existent Waypoint ID
+        // Test 17: Reject Non-Existent Chat Connection ID
         case 17: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
           const res = await fetch('http://localhost:3000/api/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ waypoint_id: 999999999, message_contents: 'Valid message content' })
+            body: JSON.stringify({ associated_chat_connection: 999999999, message_contents: 'Valid message content' })
           });
           const data = await res.json();
           if (res.status !== 404) {
             throw new Error(`Expected 404 Not Found, got HTTP ${res.status}: ${JSON.stringify(data)}`);
           }
           setTestStatus(17, 'PASSED', true);
-          log('Test 17 Passed', `Backend rejected non-existent waypoint with 404: "${data.error}"`);
+          log('Test 17 Passed', `Backend rejected non-existent chat connection with 404: "${data.error}"`);
           break;
         }
 
         // Test 18: Accept Valid Request & Persist Message
         case 18: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
-          // Create temporary waypoint
-          const { data: wp, error: wpErr } = await supabaseClient.from('Waypoints').insert({
-            host_user: fixture.registeredUserId,
-            longitude: -86.913,
-            latitude: 40.424
+          // Create temporary ChatConnection
+          const { data: chatConn, error: chatErr } = await supabaseClient.from('ChatConnections').insert({
+            host_user_uuid: fixture.registeredUserId
           }).select().single();
-          if (wpErr) throw wpErr;
+          if (chatErr) throw chatErr;
 
           let createdMsgId = null;
           try {
@@ -1086,7 +1081,7 @@
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({
-                waypoint_id: wp.id,
+                associated_chat_connection: chatConn.id,
                 message_contents: 'Automated valid backend message test'
               })
             });
@@ -1106,7 +1101,7 @@
             if (createdMsgId) {
               try { await supabaseClient.from('Messages').delete().eq('id', createdMsgId); } catch (_) {}
             }
-            try { await supabaseClient.from('Waypoints').delete().eq('id', wp.id); } catch (_) {}
+            try { await supabaseClient.from('ChatConnections').delete().eq('id', chatConn.id); } catch (_) {}
           }
           break;
         }
@@ -1116,11 +1111,7 @@
         // Test 19: Modify Profile & Region
         case 19: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { error: signInErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (signInErr) throw signInErr;
+          await ensureSession(fixture);
 
           const updatedName = `${fixture.testUser}_mod`;
           const { error: updateErr } = await supabaseClient.rpc('update_username', { new_name: updatedName });
@@ -1138,11 +1129,7 @@
         // Test 20: Request Deletion & Block
         case 20: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { error: signInErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (signInErr) throw signInErr;
+          await ensureSession(fixture);
 
           const { error: delErr } = await supabaseClient.rpc('request_account_deletion');
           if (delErr) throw delErr;
@@ -1154,6 +1141,7 @@
           if (!statusData?.disabled) throw new Error('Expected email status to have disabled=true after deletion request');
 
           await supabaseClient.auth.signOut();
+          if (fixture) fixture.token = null;
           setTestStatus(20, 'PASSED', true);
           log('Test 20 Passed', 'Account deletion requested and disabled status verified in backend');
           break;
@@ -1163,7 +1151,7 @@
 
         // Test 21: Reject Unauthenticated Viewing Request
         case 21: {
-          const res = await fetch('http://localhost:3000/api/messages?waypoint_id=1', {
+          const res = await fetch('http://localhost:3000/api/messages?associated_chat_connection=1', {
             method: 'GET'
           });
           const data = await res.json();
@@ -1175,15 +1163,10 @@
           break;
         }
 
-        // Test 22: Reject Missing waypoint_id Parameter
+        // Test 22: Reject Missing associated_chat_connection Parameter
         case 22: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
           const res = await fetch('http://localhost:3000/api/messages', {
             method: 'GET',
@@ -1194,21 +1177,16 @@
             throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
           }
           setTestStatus(22, 'PASSED', true);
-          log('Test 22 Passed', `Backend rejected missing waypoint_id parameter with 400: "${data.error}"`);
+          log('Test 22 Passed', `Backend rejected missing associated_chat_connection parameter with 400: "${data.error}"`);
           break;
         }
 
-        // Test 23: Reject Non-Numeric waypoint_id Parameter
+        // Test 23: Reject Non-Numeric associated_chat_connection Parameter
         case 23: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
-          const res = await fetch('http://localhost:3000/api/messages?waypoint_id=not_an_id', {
+          const res = await fetch('http://localhost:3000/api/messages?associated_chat_connection=not_an_id', {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
           });
@@ -1217,21 +1195,16 @@
             throw new Error(`Expected 400 Bad Request, got HTTP ${res.status}: ${JSON.stringify(data)}`);
           }
           setTestStatus(23, 'PASSED', true);
-          log('Test 23 Passed', `Backend rejected non-numeric waypoint_id with 400: "${data.error}"`);
+          log('Test 23 Passed', `Backend rejected non-numeric associated_chat_connection with 400: "${data.error}"`);
           break;
         }
 
-        // Test 24: Reject Non-Existent Waypoint ID
+        // Test 24: Reject Non-Existent Chat Connection ID
         case 24: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
-          const res = await fetch('http://localhost:3000/api/messages?waypoint_id=999999999', {
+          const res = await fetch('http://localhost:3000/api/messages?associated_chat_connection=999999999', {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${token}` }
           });
@@ -1240,27 +1213,20 @@
             throw new Error(`Expected 404 Not Found, got HTTP ${res.status}: ${JSON.stringify(data)}`);
           }
           setTestStatus(24, 'PASSED', true);
-          log('Test 24 Passed', `Backend rejected non-existent waypoint with 404: "${data.error}"`);
+          log('Test 24 Passed', `Backend rejected non-existent chat connection with 404: "${data.error}"`);
           break;
         }
 
         // Test 25: Accept Valid Request & Return Chronological Messages
         case 25: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
-          // Create temporary waypoint
-          const { data: wp, error: wpErr } = await supabaseClient.from('Waypoints').insert({
-            host_user: fixture.registeredUserId,
-            longitude: -86.913,
-            latitude: 40.424
+          // Create temporary ChatConnection
+          const { data: chatConn, error: chatErr } = await supabaseClient.from('ChatConnections').insert({
+            host_user_uuid: fixture.registeredUserId
           }).select().single();
-          if (wpErr) throw wpErr;
+          if (chatErr) throw chatErr;
 
           let msg1Id = null;
           let msg2Id = null;
@@ -1268,7 +1234,7 @@
             const now = Date.now();
             const { data: m1, error: m1Err } = await supabaseClient.from('Messages').insert({
               sender_user_id: fixture.registeredUserId,
-              waypoint_id: wp.id,
+              associated_chat_connection: chatConn.id,
               message_contents: 'Chronological test message 1',
               timestamp: new Date(now - 10000).toISOString()
             }).select().single();
@@ -1277,14 +1243,14 @@
 
             const { data: m2, error: m2Err } = await supabaseClient.from('Messages').insert({
               sender_user_id: fixture.registeredUserId,
-              waypoint_id: wp.id,
+              associated_chat_connection: chatConn.id,
               message_contents: 'Chronological test message 2',
               timestamp: new Date(now).toISOString()
             }).select().single();
             if (m2Err) throw m2Err;
             msg2Id = m2.id;
 
-            const res = await fetch(`http://localhost:3000/api/messages?waypoint_id=${wp.id}`, {
+            const res = await fetch(`http://localhost:3000/api/messages?associated_chat_connection=${chatConn.id}`, {
               method: 'GET',
               headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -1305,7 +1271,7 @@
             }
 
             setTestStatus(25, 'PASSED', true);
-            log('Test 25 Passed', `Successfully retrieved ${data.data.length} messages for Waypoint #${wp.id} in chronological order`);
+            log('Test 25 Passed', `Successfully retrieved ${data.data.length} messages for ChatConnection #${chatConn.id} in chronological order`);
           } finally {
             if (msg1Id) {
               try { await supabaseClient.from('Messages').delete().eq('id', msg1Id); } catch (_) {}
@@ -1313,7 +1279,7 @@
             if (msg2Id) {
               try { await supabaseClient.from('Messages').delete().eq('id', msg2Id); } catch (_) {}
             }
-            try { await supabaseClient.from('Waypoints').delete().eq('id', wp.id); } catch (_) {}
+            try { await supabaseClient.from('ChatConnections').delete().eq('id', chatConn.id); } catch (_) {}
           }
           break;
         }
@@ -1339,12 +1305,7 @@
         // Test 27: Reject Missing user_id Parameter
         case 27: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
           const res = await fetch('http://localhost:3000/api/users', {
             method: 'DELETE',
@@ -1363,12 +1324,7 @@
         // Test 28: Reject Invalid UUID user_id Parameter
         case 28: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
           const res = await fetch('http://localhost:3000/api/users', {
             method: 'DELETE',
@@ -1387,12 +1343,7 @@
         // Test 29: Reject Non-Existent User ID
         case 29: {
           let fixture = ctx || await getTestFixture('full_user');
-          const { data: authData, error: authErr } = await supabaseClient.auth.signInWithPassword({
-            email: fixture.testEmail,
-            password: fixture.testPassword
-          });
-          if (authErr) throw authErr;
-          const token = authData.session.access_token;
+          const token = await ensureSession(fixture);
 
           const res = await fetch('http://localhost:3000/api/users', {
             method: 'DELETE',
@@ -1431,25 +1382,36 @@
           }).select().single();
           if (profileErr) throw profileErr;
 
-          const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
-            email: delEmail,
-            password: delPassword
-          });
-          if (signInErr) throw signInErr;
-          const token = signInData.session.access_token;
+          let token = signUpData.session?.access_token;
+          if (!token) {
+            const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
+              email: delEmail,
+              password: delPassword
+            });
+            if (signInErr) throw signInErr;
+            token = signInData.session.access_token;
+          }
 
-          // Create a test waypoint hosted by this user
+          // Create a test chat connection
+          const { data: chatData, error: chatErr } = await supabaseClient.from('ChatConnections').insert({
+            host_user_uuid: null,
+            closed_status: false
+          }).select().single();
+          if (chatErr) throw chatErr;
+
+          // Create a test waypoint hosted by this user linked to the chat connection
           const { data: wpData, error: wpErr } = await supabaseClient.from('Waypoints').insert({
             host_user: profileData.id,
             longitude: -86.91,
-            latitude: 40.42
+            latitude: 40.42,
+            associated_chat_connection: chatData.id
           }).select().single();
           if (wpErr) throw wpErr;
 
-          // Create a test message inside this waypoint
+          // Create a test message inside this chat connection
           const { data: msgData, error: msgErr } = await supabaseClient.from('Messages').insert({
             sender_user_id: profileData.id,
-            waypoint_id: wpData.id,
+            associated_chat_connection: chatData.id,
             message_contents: 'Message preserved after account deletion test'
           }).select().single();
           if (msgErr) throw msgErr;
@@ -1476,7 +1438,7 @@
           }
 
           // 2. Verify Message is KEPT (retained in database)
-          const { data: checkedMsg } = await supabaseClient.from('Messages').select('id, message_contents, waypoint_id').eq('id', msgData.id).maybeSingle();
+          const { data: checkedMsg } = await supabaseClient.from('Messages').select('id, message_contents, associated_chat_connection').eq('id', msgData.id).maybeSingle();
           if (!checkedMsg) {
             throw new Error(`Expected Message #${msgData.id} to be kept, but it was removed.`);
           }
@@ -1484,10 +1446,12 @@
             throw new Error('Message contents were unexpectedly modified.');
           }
 
-          // Clean up the verified message
+          // Clean up the verified message and chat connection
           try { await supabaseClient.from('Messages').delete().eq('id', msgData.id); } catch (_) {}
+          try { await supabaseClient.from('ChatConnections').delete().eq('id', chatData.id); } catch (_) {}
 
           // 3. Verify user cannot log in
+          await new Promise(r => setTimeout(r, 200));
           const { error: reloginErr } = await supabaseClient.auth.signInWithPassword({
             email: delEmail,
             password: delPassword
@@ -1570,6 +1534,7 @@
       try {
         for (let i = 1; i <= 30; i++) {
           await executeSingleTest(i, suiteCtx);
+          await new Promise(r => setTimeout(r, 200));
         }
         log('Completed Suite', 'All 30 tests finished execution.');
       } finally {
