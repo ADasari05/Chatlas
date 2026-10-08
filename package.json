@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test:client": "node testing/server.js",
-    "test_client": "node testing/server.js"
+    "test_client": "node testing/server.js",
+    "reset-db": "node scripts/reset-db.js",
+    "clear-db": "node scripts/clear-db.js"
   },
   "dependencies": {
     "@mapbox/search-js-core": "^1.6.0",
