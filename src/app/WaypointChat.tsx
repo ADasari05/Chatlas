@@ -32,11 +32,18 @@ function WaypointChat(): React.JSX.Element | null {
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState<string>('');
     const messagesRef = useRef<HTMLDivElement>(null);
+    const currWaypointIdRef = useRef<number | null>(null);
+
+    const [waypointLocation, setWaypointLocation] = useState<{
+        city: string | null;
+        country: string | null;
+    }>({ city: null, country: null });
 
     // Open the chat for whichever waypoint was clicked
     useEffect(() => {
         const openChat = async (e: Event): Promise<void> => {
             const waypointId = (e as CustomEvent<number>).detail;
+            currWaypointIdRef.current = waypointId;
             setIsOpen(true);
             setMessages([]);
 
@@ -76,6 +83,27 @@ function WaypointChat(): React.JSX.Element | null {
         }
     }, [messages.length]);
 
+    // Get the location of the waypoint for display in the chat header
+    useEffect(() => {
+        async function fetchWaypointLocation() {
+            const { data, error } = await supabase.rpc('get_waypoint_location', {
+                waypoint_id: currWaypointIdRef.current
+            });
+
+            if (error || !data || data.length === 0) {
+                setWaypointLocation({ city: null, country: null });
+                return;
+            }
+
+            setWaypointLocation({
+                city: data[0].city || null,
+                country: data[0].country || null
+            });
+        }
+
+        fetchWaypointLocation();
+    }, [currWaypointIdRef.current]);
+
 
     const sendMessage = async (): Promise<void> => {
         if (chatId === null || newMessage.trim() === '') return;
@@ -104,7 +132,13 @@ function WaypointChat(): React.JSX.Element | null {
     return (
         <div className="waypoint-chat">
             <div className="waypoint-chat-header">
-                <span>Waypoint Chat</span>
+                <span>
+                    {waypointLocation.city && waypointLocation.country
+                        ? `Chat: ${waypointLocation.city}, ${waypointLocation.country}`
+                        : waypointLocation.country
+                            ? `Chat: ${waypointLocation.country}`
+                            : 'Chat'}
+                </span>
                 <button onClick={closeChat}>✕</button>
             </div>
             <div className="waypoint-chat-messages" ref={messagesRef}>

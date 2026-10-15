@@ -57,6 +57,8 @@ const CLICK_COLOR = '#b21c1c';
 interface WaypointEntry {
     id: number;
     marker: mapboxgl.Marker;
+    city: string | null;
+    country: string;
 }
 
 interface OtherWaypointEntry extends WaypointEntry {
@@ -69,10 +71,15 @@ const otherWaypoints: OtherWaypointEntry[] = [];
 function createWaypointMarker(
     lng: number,
     lat: number,
-    color: string
+    color: string,
+    city: string | null,
+    country: string
 ): mapboxgl.Marker {
-    return new mapboxgl.Marker({ color })
+    const marker = new mapboxgl.Marker({ color })
         .setLngLat([lng, lat]);
+    marker.getElement().dataset.city = city ?? '';
+    marker.getElement().dataset.country = country;
+    return marker;
 }
 
 const OWN_WAYPOINT_COLOR = '#2b75f4';
@@ -93,6 +100,65 @@ function setStreetLayersVisible(map: mapboxgl.Map, visible: boolean): void {
     }
 }
 
+function getWaypointLocation(
+    map: mapboxgl.Map,
+    point: mapboxgl.Point
+): { city: string | null; country: string | null } {
+    const countryFeatures = map.queryRenderedFeatures(point, {
+        layers: [COUNTRY_TINT],
+    });
+    const countryProperties = countryFeatures[0]?.properties;
+    const country = (countryProperties?.name_en ?? countryProperties?.iso_3166_1) as string | undefined;
+
+    if (!country) {
+        return { city: null, country: null };
+    }
+
+    const cityAtPoint = findCityNearMouse(map, point);
+    const cityAtPointName = cityAtPoint?.properties?.name as string | undefined;
+    if (cityAtPointName) {
+        return { city: cityAtPointName, country };
+    }
+
+    const cityTextLayers = (map.getStyle()?.layers ?? [])
+        .filter((layer) => layer.type === 'symbol' && layer['source-layer'] === 'place_label')
+        .map((layer) => layer.id);
+
+    if (cityTextLayers.length === 0) {
+        return { city: null, country };
+    }
+
+    const cityRadius = 25;
+    const nearbyCities = map.queryRenderedFeatures(
+        [
+            [point.x - cityRadius, point.y - cityRadius],
+            [point.x + cityRadius, point.y + cityRadius],
+        ],
+        {
+            layers: cityTextLayers,
+            filter: ['==', ['get', 'class'], 'settlement'],
+        }
+    );
+
+    let closestCity: string | null = null;
+    let closestDistance = cityRadius;
+
+    for (const cityFeature of nearbyCities) {
+        if (cityFeature.geometry.type !== 'Point') {
+            continue;
+        }
+        const coordinates = cityFeature.geometry.coordinates as [number, number];
+        const cityPoint = map.project(coordinates);
+        const distance = Math.hypot(cityPoint.x - point.x, cityPoint.y - point.y);
+        if (distance <= closestDistance) {
+            closestDistance = distance;
+            closestCity = (cityFeature.properties?.name as string | undefined) ?? null;
+        }
+    }
+
+    return { city: closestCity, country };
+}
+
 async function loadWaypoints(map: mapboxgl.Map, visible: boolean): Promise<void> {
     for (const wp of [...ownWaypoints, ...otherWaypoints]) {
         wp.marker.remove();
@@ -111,7 +177,7 @@ async function loadWaypoints(map: mapboxgl.Map, visible: boolean): Promise<void>
     }
  
     for (const wp of mine ?? []) {
-        const marker = createWaypointMarker(wp.longitude, wp.latitude, OWN_WAYPOINT_COLOR);
+        const marker = createWaypointMarker(wp.longitude, wp.latitude, OWN_WAYPOINT_COLOR, wp.city, wp.country);
         if (visible) {
             marker.addTo(map);
         }
@@ -119,11 +185,11 @@ async function loadWaypoints(map: mapboxgl.Map, visible: boolean): Promise<void>
             ev.stopPropagation();
             onOwnWaypointClick?.(wp.id);
         });
-        ownWaypoints.push({ id: wp.id, marker });
+        ownWaypoints.push({ id: wp.id, marker, city: wp.city, country: wp.country });
     }
  
     for (const wp of others ?? []) {
-        const marker = createWaypointMarker(wp.longitude, wp.latitude, OTHER_WAYPOINT_COLOR);
+        const marker = createWaypointMarker(wp.longitude, wp.latitude, OTHER_WAYPOINT_COLOR, wp.city, wp.country);
         if (visible) {
             marker.addTo(map);
         }
@@ -131,7 +197,7 @@ async function loadWaypoints(map: mapboxgl.Map, visible: boolean): Promise<void>
             ev.stopPropagation();
             onOtherWaypointClick?.(wp.id, wp.owner_user_id);
         });
-        otherWaypoints.push({ id: wp.id, marker, ownerUserId: wp.owner_user_id });
+        otherWaypoints.push({ id: wp.id, marker, ownerUserId: wp.owner_user_id, city: wp.city, country: wp.country });
     }
 }
  
@@ -540,9 +606,17 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                 console.log("Waypoint limit reached or waypoints not visible.");
                 return;
             }
+            
+            const location = getWaypointLocation(map, e.point);
+
+            if (!location.country) {
+                console.log('Cannot place a waypoint, not a valid country or city location.');
+                return;
+            }
+
             setIsWaypointConfirmationPopupOpen(true);
  
-            const marker = createWaypointMarker(e.lngLat.lng, e.lngLat.lat, OWN_WAYPOINT_COLOR);
+            const marker = createWaypointMarker(e.lngLat.lng, e.lngLat.lat, OWN_WAYPOINT_COLOR, location.city, location.country);
             if (showWaypointsRef.current) {
                 marker.addTo(map);
             }
@@ -551,7 +625,9 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
 
             const entry: WaypointEntry = {
                 id,
-                marker
+                marker,
+                city: location.city,
+                country: location.country
             };
 
             marker.getElement().addEventListener('click', (ev) => {
@@ -687,6 +763,8 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
         const { data, error } = await supabase.rpc('create_waypoint', {
             waypoint_longitude: lng,
             waypoint_latitude: lat,
+            waypoint_city: entry.city,
+            waypoint_country: entry.country
         });
  
         if (error || data === null) {
