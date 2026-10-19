@@ -10,6 +10,7 @@ interface Message {
     timestamp: string;
     message_contents: string;
     sender_name: string | null;
+    tour_guide_status: number | null;
 }
 
 export function openWaypointChat(waypointId: number): void {
@@ -17,7 +18,7 @@ export function openWaypointChat(waypointId: number): void {
 }
 
 async function getMessages(chatId: number): Promise<Message[]> {
-    const { data, error } = await supabase.rpc('get_messages', { chat_connection_id: chatId });
+    const { data, error } = await supabase.rpc('get_messages_with_sender_status', { chat_connection_id: chatId });
 
     if (error) {
         console.error('Could not load messages,', error);
@@ -127,24 +128,60 @@ function WaypointChat(): React.JSX.Element | null {
         setChatId(null);
     };
 
+    const [isTourGuide, setIsTourGuide] = useState(false);
+
+    useEffect(() => {
+        checkTourGuide();
+    }, [currWaypointIdRef.current]);
+
+    async function checkTourGuide() {
+        if(!currWaypointIdRef.current) {
+            return;
+        }
+
+        const { data, error } = await supabase.rpc('is_tourguide_waypoint', {
+            waypoint_id: currWaypointIdRef.current
+        });
+
+        if (error) {
+            console.error('Could not check tour guide,', error);
+            setIsTourGuide(false);
+            return;
+        }
+
+        console.log('Tour guide check result:', data);
+
+        setIsTourGuide(data === true);
+    }
+
     if (!isOpen) return null;
 
     return (
         <div className="waypoint-chat">
             <div className="waypoint-chat-header">
                 <span>
-                    {waypointLocation.city && waypointLocation.country
-                        ? `Chat: ${waypointLocation.city}, ${waypointLocation.country}`
-                        : waypointLocation.country
-                            ? `Chat: ${waypointLocation.country}`
-                            : 'Chat'}
+                    {`Chat${isTourGuide ? ' (Tour Guide)' : ''}${(
+                        waypointLocation.city && waypointLocation.country
+                            ? `: ${waypointLocation.city}, ${waypointLocation.country}`
+                            : waypointLocation.country
+                                ? `: ${waypointLocation.country}`
+                                : 'Chat'
+                    )}`}
                 </span>
                 <button onClick={closeChat}>✕</button>
             </div>
             <div className="waypoint-chat-messages" ref={messagesRef}>
                 {messages.map((message) => (
                     <div key={message.id} className="waypoint-chat-message">
-                        <div className="waypoint-chat-sender">{message.sender_name ?? 'Unknown'}</div>
+                        <div className="waypoint-chat-sender">
+                            {message.tour_guide_status === 3 ? (
+                                <strong>{message.sender_name ?? 'Unknown'} (TG)</strong>
+                            ) : message.tour_guide_status === 2 ? (
+                                <strong>{message.sender_name ?? 'Unknown'}</strong>
+                            ) : (
+                                message.sender_name ?? 'Unknown'
+                            )}
+                        </div>
                         {message.message_contents}
                     </div>
                 ))}
