@@ -53,12 +53,14 @@ const NO_CITY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features
 const CLICKED_CITY_DATA = 'clicked-city-data';
 const CLICKED_CITY_DOT = 'clicked-city-dot';
 const CLICK_COLOR = '#b21c1c';
+const TOUR_GUIDE_MULTIPLIER = 1.2;
 
 interface WaypointEntry {
     id: number;
     marker: mapboxgl.Marker;
     city: string | null;
     country: string;
+    flags: string[] | null;
 }
 
 interface OtherWaypointEntry extends WaypointEntry {
@@ -73,12 +75,18 @@ function createWaypointMarker(
     lat: number,
     color: string,
     city: string | null,
-    country: string
+    country: string,
+    flags: string[] | null
 ): mapboxgl.Marker {
-    const marker = new mapboxgl.Marker({ color })
+    const isTourGuide = flags?.includes('tour_guide') ?? false;
+    const marker = new mapboxgl.Marker({ color, scale: isTourGuide ? TOUR_GUIDE_MULTIPLIER : 1 })
         .setLngLat([lng, lat]);
     marker.getElement().dataset.city = city ?? '';
     marker.getElement().dataset.country = country;
+    marker.getElement().dataset.flags = flags?.join(',') ?? '';
+    if (isTourGuide) {
+        marker.getElement().classList.add('waypoint-marker-tourguide');
+    }
     return marker;
 }
 
@@ -177,7 +185,7 @@ async function loadWaypoints(map: mapboxgl.Map, visible: boolean): Promise<void>
     }
  
     for (const wp of mine ?? []) {
-        const marker = createWaypointMarker(wp.longitude, wp.latitude, OWN_WAYPOINT_COLOR, wp.city, wp.country);
+        const marker = createWaypointMarker(wp.longitude, wp.latitude, OWN_WAYPOINT_COLOR, wp.city, wp.country, wp.waypoint_flags);
         if (visible) {
             marker.addTo(map);
         }
@@ -185,11 +193,11 @@ async function loadWaypoints(map: mapboxgl.Map, visible: boolean): Promise<void>
             ev.stopPropagation();
             onOwnWaypointClick?.(wp.id);
         });
-        ownWaypoints.push({ id: wp.id, marker, city: wp.city, country: wp.country });
+        ownWaypoints.push({ id: wp.id, marker, city: wp.city, country: wp.country, flags: wp.waypoint_flags });
     }
  
     for (const wp of others ?? []) {
-        const marker = createWaypointMarker(wp.longitude, wp.latitude, OTHER_WAYPOINT_COLOR, wp.city, wp.country);
+        const marker = createWaypointMarker(wp.longitude, wp.latitude, OTHER_WAYPOINT_COLOR, wp.city, wp.country, wp.waypoint_flags);
         if (visible) {
             marker.addTo(map);
         }
@@ -197,7 +205,7 @@ async function loadWaypoints(map: mapboxgl.Map, visible: boolean): Promise<void>
             ev.stopPropagation();
             onOtherWaypointClick?.(wp.id, wp.owner_user_id);
         });
-        otherWaypoints.push({ id: wp.id, marker, ownerUserId: wp.owner_user_id, city: wp.city, country: wp.country });
+        otherWaypoints.push({ id: wp.id, marker, ownerUserId: wp.owner_user_id, city: wp.city, country: wp.country, flags: wp.waypoint_flags });
     }
 }
  
@@ -219,9 +227,29 @@ function removeAllWaypoints(): void {
     otherWaypoints.length = 0;
 }
 
+// Tour guide waypoint loading and handling
+let myTourGuideRegions: { city: string | null; country: string}[] = [];
+async function loadMyTourGuideRegions(): Promise<void> {
+    const { data, error } = await supabase.rpc('get_my_tour_guide_regions');
+    if (error) {
+        console.error('Could not load tour guide regions', error);
+        myTourGuideRegions = [];
+        return;
+    }
+    //console.log('Loaded tour guide regions:', data);
+    myTourGuideRegions = data ?? [];
+}
+
+function isTourGuideForLocation(city: string | null, country: string): boolean {
+    const isTourGuide = myTourGuideRegions.some((region) => region.city === city && region.country === country);
+    console.log(`Checking if user is tour guide for ${city ?? 'N/A'}, ${country}: ${isTourGuide}`);
+    return isTourGuide;
+}
+
 export async function handleMapLogin(): Promise<void> {
     if (currentMap) {
         await loadWaypoints(currentMap, waypointsVisible);
+        await loadMyTourGuideRegions();
         setWaypointsVisible(currentMap, waypointsVisible);
         console.log('Map login handled, waypoints loaded');
     }
@@ -229,6 +257,7 @@ export async function handleMapLogin(): Promise<void> {
  
 export function handleMapLogout(): void {
     removeAllWaypoints();
+    myTourGuideRegions = [];
 }
 
 export async function deleteAllOwnWaypoints(): Promise<void> {
@@ -406,6 +435,7 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
 
         if (loginStatus) {
             loadWaypoints(map, showWaypointsRef.current);
+            loadMyTourGuideRegions();
         }
 
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }));
@@ -615,8 +645,10 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
             }
 
             setIsWaypointConfirmationPopupOpen(true);
+
+            const flags: string[] | null = isTourGuideForLocation(location.city, location.country) ? ['tour_guide'] : null;
  
-            const marker = createWaypointMarker(e.lngLat.lng, e.lngLat.lat, OWN_WAYPOINT_COLOR, location.city, location.country);
+            const marker = createWaypointMarker(e.lngLat.lng, e.lngLat.lat, OWN_WAYPOINT_COLOR, location.city, location.country, flags);
             if (showWaypointsRef.current) {
                 marker.addTo(map);
             }
@@ -627,7 +659,8 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                 id,
                 marker,
                 city: location.city,
-                country: location.country
+                country: location.country,
+                flags
             };
 
             marker.getElement().addEventListener('click', (ev) => {
@@ -764,7 +797,8 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
             waypoint_longitude: lng,
             waypoint_latitude: lat,
             waypoint_city: entry.city,
-            waypoint_country: entry.country
+            waypoint_country: entry.country,
+            waypoint_flags: entry.flags,
         });
  
         if (error || data === null) {

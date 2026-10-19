@@ -82,7 +82,9 @@ function Account(): React.JSX.Element {
             const signedIn = session !== null;
             setLoginStatus(signedIn);
             setIsLoggedIn(signedIn);
-            if (event === 'SIGNED_OUT') {
+            if (signedIn) {
+                handleMapLogin();
+            } else {
                 handleMapLogout();
             }
         });
