@@ -922,3 +922,29 @@
 .waypoint-marker-tourguide svg {
     filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.9));
 }
+
+.tour-guide-application-input {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #000000;
+    min-height: 140px;
+    max-height: 280px;
+    resize: vertical;
+    overflow-y: auto;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 8px 10px;
+}
+
+.tour-guide-application-button {
+    cursor: pointer;
+    right: 50px;
+    top: 10px;
+    position: absolute;
+    color: black;
+    background-color: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    height: 30px;
+    width: 30px;
+    border-radius: 5px;
+}

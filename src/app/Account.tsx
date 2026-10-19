@@ -21,6 +21,9 @@ export let loginStatus = false;
 
 export function setLoginStatus(status: boolean): void {
     loginStatus = status;
+    window.dispatchEvent(new CustomEvent('loginStatusChanged', {
+        detail: status
+    }));
 }
 
 function Account(): React.JSX.Element {

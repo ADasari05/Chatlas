@@ -168,6 +168,9 @@ function getWaypointLocation(
 }
 
 async function loadWaypoints(map: mapboxgl.Map, visible: boolean): Promise<void> {
+    if (!loginStatus) {
+        return;
+    }
     for (const wp of [...ownWaypoints, ...otherWaypoints]) {
         wp.marker.remove();
     }
@@ -400,12 +403,88 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
     const showWaypointsRef = useRef(showWaypoints);
     showWaypointsRef.current = showWaypoints;
 
+    const [isLoggedIn, setIsLoggedIn] = useState(loginStatus);
+    useEffect(() => {
+        const handleLoginStatusChange = (event: Event) => {
+            const customEvent = event as CustomEvent<boolean>;
+            setIsLoggedIn(customEvent.detail);
+        };
+
+        window.addEventListener('loginStatusChanged', handleLoginStatusChange);
+
+        return () => {
+            window.removeEventListener('loginStatusChanged', handleLoginStatusChange);
+        };
+    }, []);
+
     const [isWaypointConfirmationPopupOpen, setIsWaypointConfirmationPopupOpen] = useState(false);
     const [isDeleteWaypointPopupOpen, setIsDeleteWaypointPopupOpen] = useState(false);
     const [selectedOwnWaypointId, setSelectedOwnWaypointId] = useState<number | null>(null);
     const [isChatWaypointPopupOpen, setIsChatWaypointPopupOpen] = useState(false);
     const [selectedOtherWaypointOwnerId, setSelectedOtherWaypointOwnerId] = useState<string | null>(null);
     const [selectedOtherWaypointId, setSelectedOtherWaypointId] = useState<number | null> (null);
+
+    const [country, setCountry] = useState('');
+    const [city, setCity] = useState('');
+    const [application, setApplication] = useState('');
+    const [isTourGuideApplicationPopupOpen, setIsTourGuideApplicationPopupOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [tourGuideApplicationError, setTourGuideApplicationError] = useState<string | null>(null);
+    const [applicationSuccessPopup, setapplicationSuccessPopup] = React.useState<boolean>(false);
+
+    const showApplicationSuccessPopup = (): void => {
+        setapplicationSuccessPopup(true);
+    }
+
+    useEffect(() => {
+        if (applicationSuccessPopup) {
+            const timer = setTimeout(() => {
+                setapplicationSuccessPopup(false);
+            }, 2500);
+        }
+    }, [applicationSuccessPopup]);
+
+    function resetForm(): void {
+        setCountry('');
+        setCity('');
+        setApplication('');
+        setTourGuideApplicationError(null);
+    }
+
+    const handleTourGuideApplication = async (): Promise<void> => {
+        if (!country || !city || !application) {
+            setTourGuideApplicationError('Please fill in all fields.');
+            return;
+        }
+        if (application.length < 100) {
+            setTourGuideApplicationError('Application must be at least 100 characters long.');
+            return;
+        }
+        if (application.length > 1000) {
+            setTourGuideApplicationError('Application must be no more than 1000 characters long.');
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const { data, error } = await supabase.rpc('create_tourguide_application', {
+                application_city: city,
+                application_country: country,
+                application_text: application
+            });
+            if (error || data === null) {
+                setTourGuideApplicationError('Could not submit application. Please try again later.');
+                return;
+            }
+            resetForm();
+            setIsTourGuideApplicationPopupOpen(false);
+            setTourGuideApplicationError(null);
+            showApplicationSuccessPopup();
+        }
+        finally {
+            setIsLoading(false);
+        }
+        
+    }
 
     useEffect(() => {
         if (!containerRef.current) return;
@@ -811,6 +890,13 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
         entry.id = data;
     };
 
+    useEffect(() => {
+        if (selectedLocation) {
+            setCountry(selectedLocation.country);
+            setCity(selectedLocation.city ?? '');
+        }
+    }, [selectedLocation]);
+
     return (
         <div className="map">
             <link rel="preconnect" href="https://api.mapbox.com" />
@@ -825,6 +911,13 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                 onToggleStreets={handleStreetsToggle}
                 onToggleWaypoints={handleWaypointsToggle}
             />
+
+            {loginStatus && (<button
+                className="tour-guide-application-button"
+                onClick={() => setIsTourGuideApplicationPopupOpen(true)}
+            >
+                📋
+            </button>)}
             {isWaypointConfirmationPopupOpen && (
                 <div className="waypoint-overlay">
                 <div className="waypoint-popup">
@@ -920,6 +1013,56 @@ function Map({ selectedLocation, onLocationSelected }: MapProps): React.JSX.Elem
                 </div>
                 </div>
                 
+            )}
+            {isTourGuideApplicationPopupOpen && (
+                <div className="sign-in-overlay">
+                    <div className="sign-in-popup">
+                        <h2>Apply to be a Tour Guide</h2>
+                        <input
+                            type="text"
+                            placeholder="Country"
+                            value={country}
+                            onChange={(e) => setCountry(e.target.value)}
+                        />
+                        <input
+                            type="text"
+                            placeholder="City"
+                            value={city}
+                            onChange={(e) => setCity(e.target.value)}
+                        />
+                        <textarea
+                            className="tour-guide-application-input"
+                            placeholder="Enter your application here"
+                            value={application}
+                            maxLength={1000}
+                            onChange={(e) => setApplication(e.target.value)}
+                        />
+                        <p className="password-hint">
+                            {application.length}/1000 characters
+                        </p>
+                        {tourGuideApplicationError && (
+                            <p className="error-message">{tourGuideApplicationError}</p>
+                        )}
+                        <button
+                            className="sign-in-button"
+                            onClick={handleTourGuideApplication}
+                            disabled={isLoading}
+                        >
+                            Confirm
+                        </button>
+                        <button
+                            className="close-button"
+                            onClick={() => { setIsTourGuideApplicationPopupOpen(false); }}
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+            {applicationSuccessPopup && (
+                <div className="success-popup">
+                    <p>Application submitted successfully!</p>
+                </div>
             )}
         </div>
     );
