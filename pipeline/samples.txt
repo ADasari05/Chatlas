@@ -1,0 +1,12 @@
+# Sample set for checking the pipeline, including a fake location that should fail
+France
+Japan
+Brazil
+Georgia (country)
+Bhutan
+Paris
+Tokyo
+Chicago
+Springfield, Illinois
+Reykjavík
+Notacountry
