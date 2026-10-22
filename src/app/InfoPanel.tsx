@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Tab, Tabs, TabList, TabPanel } from 'react-tabs';
 import 'react-tabs/style/react-tabs.css';
 import { SelectedLocation, locationLabel } from './Map';
@@ -10,6 +10,12 @@ export function OpenPanel(): void {
 }
 
 const tabs = ['Background', 'History/Culture', 'News', 'Media'];
+const BACKGROUND_TAB = 0;
+const HISTORY_TAB = 1;
+const NEWS_TAB = 2;
+const MEDIA_TAB = 3;
+
+const MediaTab = lazy(() => import('./MediaTab'));
 
 async function loadTab(tabIndex: number, location: SelectedLocation | null): Promise<string> {
     if (!location) {
@@ -50,6 +56,9 @@ function InfoPanel({ selectedLocation = null }: InfoPanelProps): React.JSX.Eleme
     }, [selectedLocation]);
 
     useEffect(() => {
+        if  (tabIndex === MEDIA_TAB) {
+            return;
+        }
         if (tabText[tabIndex] !== undefined) {
             return;
         }
@@ -114,7 +123,17 @@ function InfoPanel({ selectedLocation = null }: InfoPanelProps): React.JSX.Eleme
                 </TabList>
                 {tabs.map((label, index) => (
                     <TabPanel key={label} className="info-content">
-                        {tabText[index] ?? 'Loading...'}
+                        {index === MEDIA_TAB ? (
+                            selectedLocation ? (
+                                <Suspense fallback={<p>Loading...</p>}>
+                                    <MediaTab location={selectedLocation} />
+                                </Suspense>
+                            ) : (
+                                <p>{`${label}: Please Select a Location`}</p>
+                            )
+                        ) : (
+                            tabText[index] ?? 'Loading...'
+                        )}
                     </TabPanel>
                 ))}
             </Tabs>

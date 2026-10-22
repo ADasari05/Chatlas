@@ -244,6 +244,35 @@
     border-radius: 15px 15px 0 0;
     box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.25);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.info-panel > div:last-child,
+.info-panel .react-tabs {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.info-content {
+    display: none;
+}
+
+.info-content.react-tabs__tab-panel--selected {
+    display: block;
+}
+
+.info-panel .react-tabs__tab-panel {
+    display: none;
+}
+
+.info-panel .react-tabs__tab-panel--selected {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
 }
 
 .drag-handle {
@@ -259,11 +288,6 @@
     height: 5px;
     background-color: #aaaaaa;
     border-radius: 5px;
-}
-
-.info-content {
-    overflow-y: auto;
-    padding-left: 15px;
 }
 
 .close-button {
@@ -947,4 +971,79 @@
     height: 30px;
     width: 30px;
     border-radius: 5px;
+}
+
+.media-tab {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+.media-tab-heading {
+    margin-bottom: 5px;
+    font-size: 16px;
+    flex-shrink: 0;
+    font-weight: bold;
+}
+
+.media-tab-message {
+    color: #666;
+}
+
+.media-artist-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    align-content: start;
+    padding-right: 4px;
+}
+
+.media-artist-card {
+    min-width: 100px;
+}
+
+.media-artist-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1a1a1a;
+    text-decoration: none;
+}
+
+.media-artist-name:hover {
+    text-decoration: underline;
+}
+
+.media-artist-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 13px;
+    color: #444;
+}
+
+.media-artist-fact-label {
+    font-weight: 600;
+    color: #777;
+    margin-right: 4px;
+}
+
+.media-artist-tags {
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.media-artist-tag {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #e2e1e1;
+    color: #515151;
 }
