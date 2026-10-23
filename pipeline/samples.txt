@@ -1,0 +1,14 @@
+# Sample set for checking the pipeline. Lines with a comma are "Country, Title"
+# and get checked against the country; the last two should fail
+France
+Japan
+Brazil
+Georgia (country)
+Bhutan
+France, Paris
+Tokyo
+Chicago
+United States, Springfield, Illinois
+Iceland, Reykjavík
+Notacountry
+Mexico, Valladolid

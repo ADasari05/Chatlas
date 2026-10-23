@@ -1,0 +1,7 @@
+location_id,type,country_id,wikipedia_title
+FR,country,FR,France
+GE,country,GE,Georgia (country)
+ES-CL:Valladolid,city,ES,Valladolid
+MX-YUC:Valladolid,city,MX,"Valladolid, Yucatán"
+US-IL:Springfield,city,US,"Springfield, Illinois"
+US-GA:Rome,city,US,Rome
