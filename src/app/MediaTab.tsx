@@ -22,9 +22,23 @@ interface MusicBrainzArtist {
     }[];
 }
 
+interface LastFmArtist {
+    name: string;
+    listeners: string;
+    mbid: string;
+    url: string;
+    streamable: string;
+    image: Array<{
+    '#text': string;
+    size: string;
+    }>;
+}
+
 interface MediaTabProps {
     location: SelectedLocation;
 }
+
+type LoadStatus = 'loading' | 'done' | 'empty' | 'error';
 
 function formatLocation(location: SelectedLocation): string {
     const city = location.city;
@@ -71,8 +85,19 @@ function getTopTags(artist: MusicBrainzArtist, max: number): string[] {
 }
 
 function MediaTab({ location }: MediaTabProps): React.JSX.Element {
+    return (
+        <div className="media-tab">
+            <div className="media-tab-content">
+                <MusicBrainzSection location={location} />
+                <LastFmSection location={location} />
+            </div>
+        </div>
+    );
+}
+
+function MusicBrainzSection({ location }: MediaTabProps): React.JSX.Element {
     const [artists, setArtists] = useState<MusicBrainzArtist[]>([]);
-    const [status, setStatus] = useState<'loading' | 'done' | 'empty' | 'error'>('loading');
+    const [status, setStatus] = useState<LoadStatus>('loading');
 
     useEffect(() => {
         let cancelled = false;
@@ -115,7 +140,7 @@ function MediaTab({ location }: MediaTabProps): React.JSX.Element {
                     return;
                 }
 
-                console.error('Failed to load artists', err);
+                console.error('Failed to load musicbrainzartists', err);
                 setStatus('error');
             }
         };
@@ -127,86 +152,191 @@ function MediaTab({ location }: MediaTabProps): React.JSX.Element {
         };
     }, [location]);
 
-    if (status === 'loading') {
-        return <p className="media-tab-message">Loading artists...</p>;
-    }
-
-    if (status === 'error') {
-        return <p className="media-tab-message">Could not load artists for {locationLabel(location)}. Please try again.</p>;
-    }
-
-    if (status === 'empty') {
-        return <p className="media-tab-message">No artists native to {locationLabel(location)} found.</p>;
-    }
-
     return (
-        <div className="media-tab">
+        <section className="media-tab-section">
             <h3 
                 className="media-tab-heading">Artists native to {locationLabel(location)}
             </h3>
-            <div className="media-artist-scroll">
-                {artists.map((artist) => {
-                    const tags = getTopTags(artist, 5);
-                    return (
-                        <div key={artist.id} className="media-artist-card">
+            {status === 'loading' && (
+                <p className="media-tab-message">
+                    Loading artists for {locationLabel(location)}...
+                </p>
+            )}
+            {status === 'error' && (
+                <p className="media-tab-message">
+                    Could not load artists for {locationLabel(location)}. Please try again.
+                </p>
+            )}
+            {status === 'empty' && (
+                <p className="media-tab-message">
+                    No artists found for {locationLabel(location)}.
+                </p>
+            )}
+            {status === 'done' && (
+                <div className="media-artist-scroll">
+                    {artists.map((artist) => {
+                        const tags = getTopTags(artist, 5);
+                        return (
+                            <div key={artist.id} className="media-artist-card">
+                                <a
+                                    className="media-artist-name"
+                                    href={`https://musicbrainz.org/artist/${artist.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    {artist.name}
+                                </a>
+
+                                <div className="media-artist-facts">
+                                    {artist.type && (
+                                        <span className="media-artist-fact">
+                                            <span className="media-artist-fact-label">
+                                                {"Type:"}
+                                            </span>
+                                            {artist.type}
+                                        </span>
+                                    )}
+                                    {formatLifespan(artist) && (
+                                        <span className="media-artist-fact">
+                                            <span className="media-artist-fact-label">
+                                                {"Active:"}
+                                            </span>
+                                            {formatLifespan(artist)}
+                                        </span>
+                                    )}
+                                    {artist.area?.name && (
+                                        <span className="media-artist-fact">
+                                            <span className="media-artist-fact-label">
+                                                {"Area:"}
+                                            </span>
+                                            {artist.area.name}
+                                        </span>
+                                    )}
+                                    {artist['begin-area']?.name && (
+                                        <span className="media-artist-fact">
+                                            <span className="media-artist-fact-label">
+                                                {"Origin:"}
+                                            </span>
+                                            {artist['begin-area'].name}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {tags.length > 0 && (
+                                    <div className="media-artist-tags">
+                                        {tags.map((tag) => (
+                                            <span key={tag} className="media-artist-tag">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </section>
+    );
+}
+
+function LastFmSection({ location }: MediaTabProps): React.JSX.Element {
+    const [artists, setArtists] = useState<LastFmArtist[]>([]);
+    const [status, setStatus] = useState<LoadStatus>('loading');
+
+    const url = `https://ws.audioscrobbler.com/2.0/?method=geo.getTopArtists&country=${encodeURIComponent(location.country)}&api_key=${process.env.NEXT_PUBLIC_LAST_FM_TOKEN}&format=json&limit=10`;
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const fetchArtists = async () => {
+            setStatus('loading');
+            try {
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch top artists');
+                }
+
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.message ?? 'Last.fm API error');
+                }
+
+                if (cancelled) {
+                    return;
+                }
+
+                const results: LastFmArtist[] = data.topartists?.artist ?? [];
+
+                setArtists(results);
+                setStatus('done');
+                setStatus(results.length > 0 ? 'done' : 'empty');
+            } catch (error) {
+                if (cancelled) {
+                    return;
+                }
+
+                console.error('Failed to load last.fm artists', error);
+                setStatus('error');
+            }
+        };
+
+        fetchArtists();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [location.country]);
+
+    return (
+        <section className="media-tab-section">
+            <h3 className="media-tab-heading">
+                Top Artists in {location.country}
+            </h3>
+
+            {status === 'loading' && (
+                <p className="media-tab-message">Loading top artists for {location.country}...</p>
+            )}
+
+            {status === 'error' && (
+                <p className="media-tab-message">Could not load top artists for {location.country}. Please try again.</p>
+            )}
+            
+            {status === 'empty' && (
+                <p className="media-tab-message">No top artists found for {location.country}.</p>
+            )}
+
+            {status === 'done' && (
+            <div className="media-artist-grid">
+                {artists.map((artist, index) => (
+                    <div
+                            key={artist.mbid || artist.name}
+                            className="media-artist-card media-lastfm-card"
+                        >
                             <a
                                 className="media-artist-name"
-                                href={`https://musicbrainz.org/artist/${artist.id}`}
+                                href={artist.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
                             >
-                                {artist.name}
+                                {index + 1}. {artist.name}
                             </a>
 
                             <div className="media-artist-facts">
-                                {artist.type && (
-                                    <span className="media-artist-fact">
-                                        <span className="media-artist-fact-label">
-                                            {"Type:"}
-                                        </span>
-                                        {artist.type}
+                                <span className="media-artist-fact">
+                                    <span className="media-artist-fact-label">
+                                        Listeners:
                                     </span>
-                                )}
-                                {formatLifespan(artist) && (
-                                    <span className="media-artist-fact">
-                                        <span className="media-artist-fact-label">
-                                            {"Active:"}
-                                        </span>
-                                        {formatLifespan(artist)}
-                                    </span>
-                                )}
-                                {artist.area?.name && (
-                                    <span className="media-artist-fact">
-                                        <span className="media-artist-fact-label">
-                                            {"Area:"}
-                                        </span>
-                                        {artist.area.name}
-                                    </span>
-                                )}
-                                {artist['begin-area']?.name && (
-                                    <span className="media-artist-fact">
-                                        <span className="media-artist-fact-label">
-                                            {"Origin:"}
-                                        </span>
-                                        {artist['begin-area'].name}
-                                    </span>
-                                )}
+                                    {Number(artist.listeners).toLocaleString()}
+                                </span>
                             </div>
-
-                            {tags.length > 0 && (
-                                <div className="media-artist-tags">
-                                    {tags.map((tag) => (
-                                        <span key={tag} className="media-artist-tag">
-                                            {tag}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
                         </div>
-                    );
-                })}
-            </div>
-        </div>
+                    ))}
+                </div>
+            )}
+        </section>
     );
 }
 
