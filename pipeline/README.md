@@ -116,6 +116,20 @@ tables: locations, and sections linked to them by `location_id`.
 (like "Museums" and "Landmarks"), they're merged into one with their headings as `##`
 subheadings, and `source_url` points to the whole article. `summary` is empty for now.
 
+## Step 3: uploading
+
+Create the tables once by running `pipeline/schema.sql` in the Supabase SQL editor. Then:
+
+```bash
+python pipeline/upload.py                                  # every file in pipeline/output/parsed
+python pipeline/upload.py pipeline/output/parsed/fr.json   # specific files
+```
+
+This reads `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SECRET_KEY` from `.env.local`.
+Each location is upserted into `Locations` and its sections into `LocationSections`. Sections
+the location no longer has are deleted, so rerunning after a new scrape is safe. Anyone can read
+both tables; only the secret key can write to them.
+
 ## Tests
 
 ```bash
